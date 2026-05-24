@@ -1,0 +1,15 @@
+{
+  "specNumber": "007",
+  "featureName": "AI Avatar",
+  "phase": "design",
+  "priority": "medium",
+  "progress": {
+    "tasksTotal": 8,
+    "tasksCompleted": 0,
+    "percentage": 0
+  },
+  "timeline": {
+    "created": "2026-05-24T22:00:30.303Z",
+    "phaseStarted": "2026-05-24T22:00:30.303Z"
+  }
+}

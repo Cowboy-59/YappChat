@@ -1,0 +1,16 @@
+{
+  "projectId": "1993e2ba-2322-4b9d-809d-246ffdbe344c",
+  "primaryAi": "generic",
+  "mcpServers": {
+    "wxkanban": {
+      "transport": "https",
+      "url": "https://mcp.wxperts.com",
+      "env": {
+        "WXKANBAN_MCP_BASE_URL": "https://mcp.wxperts.com",
+        "WXKANBAN_API_TOKEN": "drHsWtTUK7ufE4We3f4bRl8PQL5FaNqAhgbrITy8OgY",
+        "WXKANBAN_PROJECT_ID": "1993e2ba-2322-4b9d-809d-246ffdbe344c"
+      }
+    }
+  },
+  "customCommands": []
+}

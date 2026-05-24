@@ -1,0 +1,15 @@
+{
+  "specNumber": "011",
+  "featureName": "Authentication and Authorization",
+  "phase": "design",
+  "priority": "high",
+  "progress": {
+    "tasksTotal": 8,
+    "tasksCompleted": 0,
+    "percentage": 0
+  },
+  "timeline": {
+    "created": "2026-05-24T21:29:26.284Z",
+    "phaseStarted": "2026-05-24T21:29:26.284Z"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "specNumber": "010",
+  "featureName": "E2E Key Backup and Recovery",
+  "phase": "design",
+  "priority": "high",
+  "progress": {
+    "tasksTotal": 8,
+    "tasksCompleted": 0,
+    "percentage": 0
+  },
+  "timeline": {
+    "created": "2026-05-24T21:38:38.099Z",
+    "phaseStarted": "2026-05-24T21:38:38.099Z"
+  }
+}

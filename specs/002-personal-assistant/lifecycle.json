@@ -1,0 +1,15 @@
+{
+  "specNumber": "002",
+  "featureName": "Personal Assistant",
+  "phase": "design",
+  "priority": "high",
+  "progress": {
+    "tasksTotal": 8,
+    "tasksCompleted": 0,
+    "percentage": 0
+  },
+  "timeline": {
+    "created": "2026-05-24T22:16:55.676Z",
+    "phaseStarted": "2026-05-24T22:16:55.676Z"
+  }
+}

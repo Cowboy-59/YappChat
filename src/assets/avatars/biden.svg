@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" role="img" aria-label="Pixel Biden">
+  <rect width="16" height="16" fill="none"/>
+  <!-- outline -->
+  <g fill="#2a1a00">
+    <rect x="4" y="2" width="8" height="1"/>
+    <rect x="3" y="3" width="1" height="1"/>
+    <rect x="12" y="3" width="1" height="1"/>
+    <rect x="2" y="4" width="1" height="6"/>
+    <rect x="13" y="4" width="1" height="6"/>
+    <rect x="3" y="10" width="10" height="1"/>
+    <rect x="3" y="11" width="1" height="1"/>
+    <rect x="12" y="11" width="1" height="1"/>
+    <rect x="2" y="12" width="1" height="3"/>
+    <rect x="13" y="12" width="1" height="3"/>
+    <rect x="3" y="15" width="10" height="1"/>
+  </g>
+  <!-- white/silver hair -->
+  <g fill="#d8d8d8">
+    <rect x="3" y="2" width="10" height="1"/>
+    <rect x="3" y="3" width="10" height="1"/>
+    <rect x="3" y="4" width="2" height="2"/>
+    <rect x="11" y="4" width="2" height="2"/>
+  </g>
+  <!-- hair highlight -->
+  <g fill="#f0f0f0">
+    <rect x="5" y="2" width="6" height="1"/>
+    <rect x="4" y="3" width="3" height="1"/>
+    <rect x="9" y="3" width="3" height="1"/>
+  </g>
+  <!-- skin (lighter) -->
+  <g fill="#f5dcc8">
+    <rect x="3" y="4" width="10" height="6"/>
+  </g>
+  <!-- face highlight -->
+  <g fill="#fdeee0">
+    <rect x="5" y="5" width="6" height="3"/>
+  </g>
+  <!-- blue eyes (Biden's signature) -->
+  <g fill="#1a1a1a">
+    <rect x="5" y="5" width="2" height="2"/>
+    <rect x="9" y="5" width="2" height="2"/>
+  </g>
+  <g fill="#4fc3f7">
+    <rect x="5" y="5" width="1" height="1"/>
+    <rect x="9" y="5" width="1" height="1"/>
+  </g>
+  <g fill="#f5fbff">
+    <rect x="6" y="5" width="1" height="1"/>
+    <rect x="10" y="5" width="1" height="1"/>
+  </g>
+  <!-- warm smile -->
+  <g fill="#c0503a">
+    <rect x="5" y="8" width="6" height="1"/>
+  </g>
+  <g fill="#f5dcc8">
+    <rect x="6" y="8" width="4" height="1"/>
+  </g>
+  <!-- teeth hint -->
+  <g fill="#f5f5f5">
+    <rect x="6" y="8" width="4" height="1"/>
+  </g>
+  <g fill="#c0503a">
+    <rect x="5" y="9" width="6" height="1"/>
+  </g>
+  <!-- white collar -->
+  <g fill="#f5f5f5">
+    <rect x="6" y="11" width="4" height="1"/>
+    <rect x="5" y="12" width="2" height="1"/>
+    <rect x="9" y="12" width="2" height="1"/>
+  </g>
+  <!-- dark navy suit -->
+  <g fill="#1a2040">
+    <rect x="3" y="11" width="10" height="4"/>
+  </g>
+  <!-- blue tie -->
+  <g fill="#1a5fa0">
+    <rect x="7" y="12" width="2" height="3"/>
+    <rect x="6" y="13" width="4" height="1"/>
+    <rect x="7" y="15" width="2" height="1"/>
+  </g>
+  <!-- tie knot -->
+  <g fill="#0d4070">
+    <rect x="7" y="12" width="2" height="1"/>
+  </g>
+  <!-- aviator sunglasses -->
+  <g fill="#1a1a1a" opacity="1">
+    <rect x="3" y="5" width="5" height="2"/>
+    <rect x="8" y="5" width="5" height="2"/>
+    <rect x="8" y="6" width="1" height="1"/>
+  </g>
+  <!-- lens tint (blue mirror) -->
+  <g fill="#1a5fa0" opacity="0.6">
+    <rect x="4" y="5" width="3" height="2"/>
+    <rect x="9" y="5" width="3" height="2"/>
+  </g>
+  <!-- bridge of glasses -->
+  <g fill="#1a1a1a">
+    <rect x="8" y="5" width="1" height="1"/>
+  </g>
+</svg>

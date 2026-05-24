@@ -1,0 +1,54 @@
+# Dependencies
+node_modules/
+
+# Build / runtime artifacts
+dist/
+build/
+out/
+.next/
+.turbo/
+coverage/
+*.log
+
+# Local env / secrets — NEVER commit
+.env
+.env.local
+.env.*.local
+mcp-server/.env
+
+# wxkanban-agent kit — recommended entries from
+# wxkanban-agent/templates/.gitignore.snippet
+
+# Spec 027 — per-developer transient runtime state (port, PID, parent PID).
+.wxai/kit-runtime.json
+
+# Spec 028 — kit:configure writes an API token into the `kit` block of
+# .wxai/project.json. Treat the whole file as secret-bearing.
+.wxai/project.json
+
+# Legacy MCP pid / credentials files (pre-028).
+.mcp-server.pid
+.wxkanban-project.json
+
+# Local-only legacy hashes for spec 026 auditfences --baseline.
+.wxai/auditfences-legacy.json
+
+# Kit runtime logs + gateway pid.
+logs/
+.orchestrator-gateway.pid
+
+# Editor / IDE
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/tasks.json
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local history (VS Code Local History extension)
+.history/

@@ -1,0 +1,15 @@
+{
+  "specNumber": "012",
+  "featureName": "Public Landing Page",
+  "phase": "design",
+  "priority": "high",
+  "progress": {
+    "tasksTotal": 8,
+    "tasksCompleted": 0,
+    "percentage": 0
+  },
+  "timeline": {
+    "created": "2026-05-24T21:25:28.368Z",
+    "phaseStarted": "2026-05-24T21:25:28.368Z"
+  }
+}

@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" role="img" aria-label="Pixel frog">
+  <rect width="16" height="16" fill="none"/>
+  <!-- outline -->
+  <g fill="#1a3a1a">
+    <!-- eye bumps top -->
+    <rect x="3" y="2" width="3" height="1"/>
+    <rect x="10" y="2" width="3" height="1"/>
+    <rect x="2" y="3" width="1" height="2"/>
+    <rect x="6" y="3" width="1" height="1"/>
+    <rect x="9" y="3" width="1" height="1"/>
+    <rect x="13" y="3" width="1" height="2"/>
+    <!-- head/body outline -->
+    <rect x="2" y="5" width="1" height="5"/>
+    <rect x="13" y="5" width="1" height="5"/>
+    <rect x="3" y="10" width="10" height="1"/>
+    <!-- legs -->
+    <rect x="3" y="11" width="1" height="3"/>
+    <rect x="12" y="11" width="1" height="3"/>
+    <rect x="4" y="14" width="3" height="1"/>
+    <rect x="9" y="14" width="3" height="1"/>
+    <!-- bottom -->
+    <rect x="4" y="11" width="8" height="1"/>
+  </g>
+  <!-- eye bumps (green) -->
+  <g fill="#4caf50">
+    <rect x="3" y="3" width="3" height="2"/>
+    <rect x="10" y="3" width="3" height="2"/>
+  </g>
+  <!-- pupils (large, dark) -->
+  <g fill="#1a1a1a">
+    <rect x="4" y="3" width="2" height="2"/>
+    <rect x="10" y="3" width="2" height="2"/>
+  </g>
+  <g fill="#ffd700">
+    <rect x="3" y="3" width="1" height="1"/>
+    <rect x="6" y="3" width="0" height="0"/>
+    <rect x="12" y="3" width="1" height="1"/>
+  </g>
+  <g fill="#f5fbff">
+    <rect x="5" y="3" width="1" height="1"/>
+    <rect x="11" y="3" width="1" height="1"/>
+  </g>
+  <!-- body (green) -->
+  <g fill="#4caf50">
+    <rect x="3" y="5" width="10" height="5"/>
+    <rect x="4" y="10" width="8" height="1"/>
+  </g>
+  <!-- belly (light green) -->
+  <g fill="#a5d6a7">
+    <rect x="4" y="6" width="8" height="4"/>
+  </g>
+  <!-- mouth -->
+  <g fill="#1a3a1a">
+    <rect x="5" y="8" width="6" height="1"/>
+  </g>
+  <g fill="#e97fa5">
+    <rect x="5" y="9" width="6" height="1"/>
+  </g>
+  <!-- legs -->
+  <g fill="#4caf50">
+    <rect x="4" y="11" width="3" height="3"/>
+    <rect x="9" y="11" width="3" height="3"/>
+  </g>
+  <!-- toes -->
+  <g fill="#2d7a30">
+    <rect x="4" y="14" width="1" height="1"/>
+    <rect x="6" y="14" width="1" height="1"/>
+    <rect x="9" y="14" width="1" height="1"/>
+    <rect x="11" y="14" width="1" height="1"/>
+  </g>
+</svg>
