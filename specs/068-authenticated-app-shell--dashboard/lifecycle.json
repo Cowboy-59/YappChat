@@ -1,0 +1,15 @@
+{
+  "specNumber": "068",
+  "featureName": "Authenticated App Shell + Dashboard",
+  "phase": "design",
+  "priority": "high",
+  "progress": {
+    "tasksTotal": 7,
+    "tasksCompleted": 0,
+    "percentage": 0
+  },
+  "timeline": {
+    "created": "2026-06-23T01:26:39.520Z",
+    "phaseStarted": "2026-06-23T01:26:39.520Z"
+  }
+}
