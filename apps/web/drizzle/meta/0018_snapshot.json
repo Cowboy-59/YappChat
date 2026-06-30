@@ -1,0 +1,5478 @@
+{
+  "id": "8206c38a-2cad-402e-8b6a-df3321c4f859",
+  "prevId": "401839d2-9d76-495c-bb39-34055d0360e3",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "yappchat.landingpageconfig": {
+      "name": "landingpageconfig",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "deploymentid": {
+          "name": "deploymentid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "branding": {
+          "name": "branding",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seo": {
+          "name": "seo",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "plans": {
+          "name": "plans",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "features": {
+          "name": "features",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "faq": {
+          "name": "faq",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "testimonials": {
+          "name": "testimonials",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "security": {
+          "name": "security",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "downloads": {
+          "name": "downloads",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "disabled": {
+          "name": "disabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "updatedat": {
+          "name": "updatedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedby": {
+          "name": "updatedby",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "landingpageconfig_deploymentid_key": {
+          "name": "landingpageconfig_deploymentid_key",
+          "columns": [
+            {
+              "expression": "deploymentid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.authauditlog": {
+      "name": "authauditlog",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "userid": {
+          "name": "userid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "eventtype": {
+          "name": "eventtype",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ip": {
+          "name": "ip",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdat": {
+          "name": "createdat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "authauditlog_userid_idx": {
+          "name": "authauditlog_userid_idx",
+          "columns": [
+            {
+              "expression": "userid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.emailverificationtokens": {
+      "name": "emailverificationtokens",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "userid": {
+          "name": "userid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tokenhash": {
+          "name": "tokenhash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expiresat": {
+          "name": "expiresat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "consumedat": {
+          "name": "consumedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdat": {
+          "name": "createdat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "emailverificationtokens_tokenhash_key": {
+          "name": "emailverificationtokens_tokenhash_key",
+          "columns": [
+            {
+              "expression": "tokenhash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "emailverificationtokens_userid_users_id_fk": {
+          "name": "emailverificationtokens_userid_users_id_fk",
+          "tableFrom": "emailverificationtokens",
+          "tableTo": "users",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "userid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.magiclinktokens": {
+      "name": "magiclinktokens",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "userid": {
+          "name": "userid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tokenhash": {
+          "name": "tokenhash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expiresat": {
+          "name": "expiresat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "consumedat": {
+          "name": "consumedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdat": {
+          "name": "createdat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "magiclinktokens_tokenhash_key": {
+          "name": "magiclinktokens_tokenhash_key",
+          "columns": [
+            {
+              "expression": "tokenhash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "magiclinktokens_userid_users_id_fk": {
+          "name": "magiclinktokens_userid_users_id_fk",
+          "tableFrom": "magiclinktokens",
+          "tableTo": "users",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "userid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.orginvitations": {
+      "name": "orginvitations",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "orgid": {
+          "name": "orgid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "orgrole",
+          "typeSchema": "yappchat",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'member'"
+        },
+        "tokenhash": {
+          "name": "tokenhash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "invitedby": {
+          "name": "invitedby",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "expiresat": {
+          "name": "expiresat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "consumedat": {
+          "name": "consumedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdat": {
+          "name": "createdat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "orginvitations_tokenhash_key": {
+          "name": "orginvitations_tokenhash_key",
+          "columns": [
+            {
+              "expression": "tokenhash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "orginvitations_orgid_idx": {
+          "name": "orginvitations_orgid_idx",
+          "columns": [
+            {
+              "expression": "orgid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "orginvitations_orgid_orgs_id_fk": {
+          "name": "orginvitations_orgid_orgs_id_fk",
+          "tableFrom": "orginvitations",
+          "tableTo": "orgs",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "orgid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.orgmemberships": {
+      "name": "orgmemberships",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "userid": {
+          "name": "userid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "orgid": {
+          "name": "orgid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "orgrole",
+          "typeSchema": "yappchat",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'member'"
+        },
+        "createdat": {
+          "name": "createdat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "orgmemberships_userid_orgid_key": {
+          "name": "orgmemberships_userid_orgid_key",
+          "columns": [
+            {
+              "expression": "userid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "orgid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "orgmemberships_orgid_idx": {
+          "name": "orgmemberships_orgid_idx",
+          "columns": [
+            {
+              "expression": "orgid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "orgmemberships_userid_users_id_fk": {
+          "name": "orgmemberships_userid_users_id_fk",
+          "tableFrom": "orgmemberships",
+          "tableTo": "users",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "userid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "orgmemberships_orgid_orgs_id_fk": {
+          "name": "orgmemberships_orgid_orgs_id_fk",
+          "tableFrom": "orgmemberships",
+          "tableTo": "orgs",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "orgid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.orgs": {
+      "name": "orgs",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "plantype": {
+          "name": "plantype",
+          "type": "plantype",
+          "typeSchema": "yappchat",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'individual'"
+        },
+        "seatlimit": {
+          "name": "seatlimit",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdat": {
+          "name": "createdat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.passwordresettokens": {
+      "name": "passwordresettokens",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "userid": {
+          "name": "userid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tokenhash": {
+          "name": "tokenhash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expiresat": {
+          "name": "expiresat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "consumedat": {
+          "name": "consumedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdat": {
+          "name": "createdat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "passwordresettokens_tokenhash_key": {
+          "name": "passwordresettokens_tokenhash_key",
+          "columns": [
+            {
+              "expression": "tokenhash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "passwordresettokens_userid_users_id_fk": {
+          "name": "passwordresettokens_userid_users_id_fk",
+          "tableFrom": "passwordresettokens",
+          "tableTo": "users",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "userid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.refreshtokens": {
+      "name": "refreshtokens",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "userid": {
+          "name": "userid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "refreshtokenhash": {
+          "name": "refreshtokenhash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "familyid": {
+          "name": "familyid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sessionid": {
+          "name": "sessionid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "replacedbyid": {
+          "name": "replacedbyid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "expiresat": {
+          "name": "expiresat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "createdat": {
+          "name": "createdat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "rotatedat": {
+          "name": "rotatedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revokedat": {
+          "name": "revokedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "refreshtokens_refreshtokenhash_key": {
+          "name": "refreshtokens_refreshtokenhash_key",
+          "columns": [
+            {
+              "expression": "refreshtokenhash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "refreshtokens_familyid_idx": {
+          "name": "refreshtokens_familyid_idx",
+          "columns": [
+            {
+              "expression": "familyid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "refreshtokens_userid_users_id_fk": {
+          "name": "refreshtokens_userid_users_id_fk",
+          "tableFrom": "refreshtokens",
+          "tableTo": "users",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "userid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "refreshtokens_sessionid_sessions_id_fk": {
+          "name": "refreshtokens_sessionid_sessions_id_fk",
+          "tableFrom": "refreshtokens",
+          "tableTo": "sessions",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "sessionid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.sessions": {
+      "name": "sessions",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "userid": {
+          "name": "userid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sessiontokenhash": {
+          "name": "sessiontokenhash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "deviceid": {
+          "name": "deviceid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "expiresat": {
+          "name": "expiresat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "lastusedat": {
+          "name": "lastusedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "createdat": {
+          "name": "createdat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "revokedat": {
+          "name": "revokedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "sessions_sessiontokenhash_key": {
+          "name": "sessions_sessiontokenhash_key",
+          "columns": [
+            {
+              "expression": "sessiontokenhash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sessions_userid_idx": {
+          "name": "sessions_userid_idx",
+          "columns": [
+            {
+              "expression": "userid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "sessions_userid_users_id_fk": {
+          "name": "sessions_userid_users_id_fk",
+          "tableFrom": "sessions",
+          "tableTo": "users",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "userid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.ssoidentities": {
+      "name": "ssoidentities",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "userid": {
+          "name": "userid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subject": {
+          "name": "subject",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdat": {
+          "name": "createdat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "ssoidentities_provider_subject_key": {
+          "name": "ssoidentities_provider_subject_key",
+          "columns": [
+            {
+              "expression": "provider",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "subject",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ssoidentities_userid_idx": {
+          "name": "ssoidentities_userid_idx",
+          "columns": [
+            {
+              "expression": "userid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ssoidentities_userid_users_id_fk": {
+          "name": "ssoidentities_userid_users_id_fk",
+          "tableFrom": "ssoidentities",
+          "tableTo": "users",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "userid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.users": {
+      "name": "users",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "displayname": {
+          "name": "displayname",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "passwordhash": {
+          "name": "passwordhash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "userkind",
+          "typeSchema": "yappchat",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'human'"
+        },
+        "plan": {
+          "name": "plan",
+          "type": "plan",
+          "typeSchema": "yappchat",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'individual'"
+        },
+        "issystemadmin": {
+          "name": "issystemadmin",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "isbillingadmin": {
+          "name": "isbillingadmin",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "issupport": {
+          "name": "issupport",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "bio": {
+          "name": "bio",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "avatarurl": {
+          "name": "avatarurl",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "preferredlanguage": {
+          "name": "preferredlanguage",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "emailverifiedat": {
+          "name": "emailverifiedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdat": {
+          "name": "createdat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedat": {
+          "name": "updatedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "users_email_key": {
+          "name": "users_email_key",
+          "columns": [
+            {
+              "expression": "email",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.agenttemplates": {
+      "name": "agenttemplates",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "orgid": {
+          "name": "orgid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "avatarurl": {
+          "name": "avatarurl",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "systemprompt": {
+          "name": "systemprompt",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "providerid": {
+          "name": "providerid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "async": {
+          "name": "async",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "maxruntimeseconds": {
+          "name": "maxruntimeseconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 600
+        },
+        "createdat": {
+          "name": "createdat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedat": {
+          "name": "updatedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "agenttemplates_orgid_name_key": {
+          "name": "agenttemplates_orgid_name_key",
+          "columns": [
+            {
+              "expression": "orgid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "agenttemplates_orgid_idx": {
+          "name": "agenttemplates_orgid_idx",
+          "columns": [
+            {
+              "expression": "orgid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "agenttemplates_orgid_orgs_id_fk": {
+          "name": "agenttemplates_orgid_orgs_id_fk",
+          "tableFrom": "agenttemplates",
+          "tableTo": "orgs",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "orgid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.agenttemplateskills": {
+      "name": "agenttemplateskills",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "agenttemplateid": {
+          "name": "agenttemplateid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "skillid": {
+          "name": "skillid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "agenttemplateskills_template_skill_key": {
+          "name": "agenttemplateskills_template_skill_key",
+          "columns": [
+            {
+              "expression": "agenttemplateid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "skillid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "agenttemplateskills_agenttemplateid_agenttemplates_id_fk": {
+          "name": "agenttemplateskills_agenttemplateid_agenttemplates_id_fk",
+          "tableFrom": "agenttemplateskills",
+          "tableTo": "agenttemplates",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "agenttemplateid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "agenttemplateskills_skillid_skills_id_fk": {
+          "name": "agenttemplateskills_skillid_skills_id_fk",
+          "tableFrom": "agenttemplateskills",
+          "tableTo": "skills",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "skillid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.skills": {
+      "name": "skills",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "orgid": {
+          "name": "orgid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "category": {
+          "name": "category",
+          "type": "skillcategory",
+          "typeSchema": "yappchat",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'custom'"
+        },
+        "inputschema": {
+          "name": "inputschema",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "handlerurl": {
+          "name": "handlerurl",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "skilltoken": {
+          "name": "skilltoken",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "async": {
+          "name": "async",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "version": {
+          "name": "version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'1.0.0'"
+        },
+        "createdby": {
+          "name": "createdby",
+          "type": "skillcreatedby",
+          "typeSchema": "yappchat",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'studio'"
+        },
+        "createdbyuserid": {
+          "name": "createdbyuserid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "communityskillid": {
+          "name": "communityskillid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdat": {
+          "name": "createdat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedat": {
+          "name": "updatedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "skills_orgid_name_key": {
+          "name": "skills_orgid_name_key",
+          "columns": [
+            {
+              "expression": "orgid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "skills_orgid_idx": {
+          "name": "skills_orgid_idx",
+          "columns": [
+            {
+              "expression": "orgid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "skills_orgid_orgs_id_fk": {
+          "name": "skills_orgid_orgs_id_fk",
+          "tableFrom": "skills",
+          "tableTo": "orgs",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "orgid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "skills_createdbyuserid_users_id_fk": {
+          "name": "skills_createdbyuserid_users_id_fk",
+          "tableFrom": "skills",
+          "tableTo": "users",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "createdbyuserid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.skilltestlogs": {
+      "name": "skilltestlogs",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "skillid": {
+          "name": "skillid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "testedinput": {
+          "name": "testedinput",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "httpstatus": {
+          "name": "httpstatus",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "responsebody": {
+          "name": "responsebody",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "latencyms": {
+          "name": "latencyms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "success": {
+          "name": "success",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "testedat": {
+          "name": "testedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "testedby": {
+          "name": "testedby",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "skilltestlogs_skillid_idx": {
+          "name": "skilltestlogs_skillid_idx",
+          "columns": [
+            {
+              "expression": "skillid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "skilltestlogs_skillid_skills_id_fk": {
+          "name": "skilltestlogs_skillid_skills_id_fk",
+          "tableFrom": "skilltestlogs",
+          "tableTo": "skills",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "skillid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "skilltestlogs_testedby_users_id_fk": {
+          "name": "skilltestlogs_testedby_users_id_fk",
+          "tableFrom": "skilltestlogs",
+          "tableTo": "users",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "testedby"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.skillversions": {
+      "name": "skillversions",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "skillid": {
+          "name": "skillid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "previousversion": {
+          "name": "previousversion",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "changedfields": {
+          "name": "changedfields",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "schemadiff": {
+          "name": "schemadiff",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updatedat": {
+          "name": "updatedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedby": {
+          "name": "updatedby",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "skillversions_skillid_idx": {
+          "name": "skillversions_skillid_idx",
+          "columns": [
+            {
+              "expression": "skillid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "skillversions_skillid_skills_id_fk": {
+          "name": "skillversions_skillid_skills_id_fk",
+          "tableFrom": "skillversions",
+          "tableTo": "skills",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "skillid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "skillversions_updatedby_users_id_fk": {
+          "name": "skillversions_updatedby_users_id_fk",
+          "tableFrom": "skillversions",
+          "tableTo": "users",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "updatedby"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.aiproviders": {
+      "name": "aiproviders",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "userid": {
+          "name": "userid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "aiprovidertype",
+          "typeSchema": "yappchat",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "baseurl": {
+          "name": "baseurl",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "model": {
+          "name": "model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "apikey": {
+          "name": "apikey",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "supportstooluse": {
+          "name": "supportstooluse",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "supportsstreaming": {
+          "name": "supportsstreaming",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "isdefault": {
+          "name": "isdefault",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "lastpingedat": {
+          "name": "lastpingedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lastpinglatencyms": {
+          "name": "lastpinglatencyms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdat": {
+          "name": "createdat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "aiproviders_userid_idx": {
+          "name": "aiproviders_userid_idx",
+          "columns": [
+            {
+              "expression": "userid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "aiproviders_one_default": {
+          "name": "aiproviders_one_default",
+          "columns": [
+            {
+              "expression": "isdefault",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"yappchat\".\"aiproviders\".\"isdefault\" = true",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "aiproviders_userid_users_id_fk": {
+          "name": "aiproviders_userid_users_id_fk",
+          "tableFrom": "aiproviders",
+          "tableTo": "users",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "userid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.assistantmessages": {
+      "name": "assistantmessages",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "sessionid": {
+          "name": "sessionid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "assistantrole",
+          "typeSchema": "yappchat",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "content": {
+          "name": "content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "toolcalls": {
+          "name": "toolcalls",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "prompttokens": {
+          "name": "prompttokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "completiontokens": {
+          "name": "completiontokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdat": {
+          "name": "createdat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "assistantmessages_sessionid_idx": {
+          "name": "assistantmessages_sessionid_idx",
+          "columns": [
+            {
+              "expression": "sessionid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "assistantmessages_sessionid_assistantsessions_id_fk": {
+          "name": "assistantmessages_sessionid_assistantsessions_id_fk",
+          "tableFrom": "assistantmessages",
+          "tableTo": "assistantsessions",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "sessionid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.assistantsessions": {
+      "name": "assistantsessions",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "userid": {
+          "name": "userid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "providerid": {
+          "name": "providerid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lastmessageat": {
+          "name": "lastmessageat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "deletedat": {
+          "name": "deletedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdat": {
+          "name": "createdat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "assistantsessions_userid_idx": {
+          "name": "assistantsessions_userid_idx",
+          "columns": [
+            {
+              "expression": "userid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "assistantsessions_userid_users_id_fk": {
+          "name": "assistantsessions_userid_users_id_fk",
+          "tableFrom": "assistantsessions",
+          "tableTo": "users",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "userid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "assistantsessions_providerid_aiproviders_id_fk": {
+          "name": "assistantsessions_providerid_aiproviders_id_fk",
+          "tableFrom": "assistantsessions",
+          "tableTo": "aiproviders",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "providerid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.paconfigs": {
+      "name": "paconfigs",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "userid": {
+          "name": "userid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "activeproviderid": {
+          "name": "activeproviderid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "briefingtimeutc": {
+          "name": "briefingtimeutc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "monitorintervalmin": {
+          "name": "monitorintervalmin",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 5
+        },
+        "notificationprefs": {
+          "name": "notificationprefs",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "bubbletimeoutms": {
+          "name": "bubbletimeoutms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 8000
+        },
+        "createdat": {
+          "name": "createdat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedat": {
+          "name": "updatedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "paconfigs_userid_key": {
+          "name": "paconfigs_userid_key",
+          "columns": [
+            {
+              "expression": "userid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "paconfigs_userid_users_id_fk": {
+          "name": "paconfigs_userid_users_id_fk",
+          "tableFrom": "paconfigs",
+          "tableTo": "users",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "userid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "paconfigs_activeproviderid_aiproviders_id_fk": {
+          "name": "paconfigs_activeproviderid_aiproviders_id_fk",
+          "tableFrom": "paconfigs",
+          "tableTo": "aiproviders",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "activeproviderid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.skillinvocations": {
+      "name": "skillinvocations",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "skillid": {
+          "name": "skillid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "userid": {
+          "name": "userid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sessionid": {
+          "name": "sessionid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "subagentexecutionid": {
+          "name": "subagentexecutionid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "invokedby": {
+          "name": "invokedby",
+          "type": "invokedby",
+          "typeSchema": "yappchat",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pa'"
+        },
+        "arguments": {
+          "name": "arguments",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "httpstatus": {
+          "name": "httpstatus",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "responsebody": {
+          "name": "responsebody",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "errormessage": {
+          "name": "errormessage",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "latencyms": {
+          "name": "latencyms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "success": {
+          "name": "success",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "invokedat": {
+          "name": "invokedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "skillinvocations_skillid_idx": {
+          "name": "skillinvocations_skillid_idx",
+          "columns": [
+            {
+              "expression": "skillid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "skillinvocations_skillid_skills_id_fk": {
+          "name": "skillinvocations_skillid_skills_id_fk",
+          "tableFrom": "skillinvocations",
+          "tableTo": "skills",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "skillid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "skillinvocations_userid_users_id_fk": {
+          "name": "skillinvocations_userid_users_id_fk",
+          "tableFrom": "skillinvocations",
+          "tableTo": "users",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "userid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "skillinvocations_sessionid_assistantsessions_id_fk": {
+          "name": "skillinvocations_sessionid_assistantsessions_id_fk",
+          "tableFrom": "skillinvocations",
+          "tableTo": "assistantsessions",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "sessionid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.channelaccounts": {
+      "name": "channelaccounts",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "channelid": {
+          "name": "channelid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "accountid": {
+          "name": "accountid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tokensource": {
+          "name": "tokensource",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'none'"
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "config": {
+          "name": "config",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdat": {
+          "name": "createdat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "channelaccounts_channelid_channels_id_fk": {
+          "name": "channelaccounts_channelid_channels_id_fk",
+          "tableFrom": "channelaccounts",
+          "tableTo": "channels",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "channelid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.channels": {
+      "name": "channels",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "platformid": {
+          "name": "platformid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "config": {
+          "name": "config",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "channelstatus",
+          "typeSchema": "yappchat",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'offline'"
+        },
+        "lastseenat": {
+          "name": "lastseenat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdat": {
+          "name": "createdat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "channels_platformid_idx": {
+          "name": "channels_platformid_idx",
+          "columns": [
+            {
+              "expression": "platformid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.conversationmembers": {
+      "name": "conversationmembers",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "conversationid": {
+          "name": "conversationid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "userid": {
+          "name": "userid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'member'"
+        },
+        "lastreadat": {
+          "name": "lastreadat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "joinedat": {
+          "name": "joinedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "conversationmembers_conv_user_key": {
+          "name": "conversationmembers_conv_user_key",
+          "columns": [
+            {
+              "expression": "conversationid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "userid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "conversationmembers_userid_idx": {
+          "name": "conversationmembers_userid_idx",
+          "columns": [
+            {
+              "expression": "userid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "conversationmembers_conversationid_conversations_id_fk": {
+          "name": "conversationmembers_conversationid_conversations_id_fk",
+          "tableFrom": "conversationmembers",
+          "tableTo": "conversations",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "conversationid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.conversations": {
+      "name": "conversations",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "channelid": {
+          "name": "channelid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "kind": {
+          "name": "kind",
+          "type": "conversationkind",
+          "typeSchema": "yappchat",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'channel'"
+        },
+        "externalid": {
+          "name": "externalid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lastmessageat": {
+          "name": "lastmessageat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "createdat": {
+          "name": "createdat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "conversations_channelid_idx": {
+          "name": "conversations_channelid_idx",
+          "columns": [
+            {
+              "expression": "channelid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "conversations_channelid_channels_id_fk": {
+          "name": "conversations_channelid_channels_id_fk",
+          "tableFrom": "conversations",
+          "tableTo": "channels",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "channelid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.messagedeliveries": {
+      "name": "messagedeliveries",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "messageid": {
+          "name": "messageid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "channelid": {
+          "name": "channelid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ackstate": {
+          "name": "ackstate",
+          "type": "ackstate",
+          "typeSchema": "yappchat",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "retrycount": {
+          "name": "retrycount",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "primaryplatformmessageid": {
+          "name": "primaryplatformmessageid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sentat": {
+          "name": "sentat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdat": {
+          "name": "createdat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "messagedeliveries_messageid_idx": {
+          "name": "messagedeliveries_messageid_idx",
+          "columns": [
+            {
+              "expression": "messageid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "messagedeliveries_messageid_messages_id_fk": {
+          "name": "messagedeliveries_messageid_messages_id_fk",
+          "tableFrom": "messagedeliveries",
+          "tableTo": "messages",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "messageid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "messagedeliveries_channelid_channels_id_fk": {
+          "name": "messagedeliveries_channelid_channels_id_fk",
+          "tableFrom": "messagedeliveries",
+          "tableTo": "channels",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "channelid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.messages": {
+      "name": "messages",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "channelid": {
+          "name": "channelid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "conversationid": {
+          "name": "conversationid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "platformmessageid": {
+          "name": "platformmessageid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "authorid": {
+          "name": "authorid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "orgmemberid": {
+          "name": "orgmemberid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "encryptiontype": {
+          "name": "encryptiontype",
+          "type": "msgencryptiontype",
+          "typeSchema": "yappchat",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'platform'"
+        },
+        "content": {
+          "name": "content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "encryptedpayload": {
+          "name": "encryptedpayload",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "encryptionkeyid": {
+          "name": "encryptionkeyid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "mediaurl": {
+          "name": "mediaurl",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "messagetype": {
+          "name": "messagetype",
+          "type": "msgtype",
+          "typeSchema": "yappchat",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'chat'"
+        },
+        "direction": {
+          "name": "direction",
+          "type": "msgdirection",
+          "typeSchema": "yappchat",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ackstate": {
+          "name": "ackstate",
+          "type": "ackstate",
+          "typeSchema": "yappchat",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "ackedat": {
+          "name": "ackedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "purgeat": {
+          "name": "purgeat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdat": {
+          "name": "createdat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "messages_channel_platformmsg_key": {
+          "name": "messages_channel_platformmsg_key",
+          "columns": [
+            {
+              "expression": "channelid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "platformmessageid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "messages_conversationid_idx": {
+          "name": "messages_conversationid_idx",
+          "columns": [
+            {
+              "expression": "conversationid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "messages_channelid_channels_id_fk": {
+          "name": "messages_channelid_channels_id_fk",
+          "tableFrom": "messages",
+          "tableTo": "channels",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "channelid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "messages_conversationid_conversations_id_fk": {
+          "name": "messages_conversationid_conversations_id_fk",
+          "tableFrom": "messages",
+          "tableTo": "conversations",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "conversationid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.wsevents": {
+      "name": "wsevents",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ts": {
+          "name": "ts",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expiresat": {
+          "name": "expiresat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "wsevents_scope_id_idx": {
+          "name": "wsevents_scope_id_idx",
+          "columns": [
+            {
+              "expression": "scope",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "wsevents_expiresat_idx": {
+          "name": "wsevents_expiresat_idx",
+          "columns": [
+            {
+              "expression": "expiresat",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.wssessions": {
+      "name": "wssessions",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "userid": {
+          "name": "userid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subscriptions": {
+          "name": "subscriptions",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'"
+        },
+        "connectedat": {
+          "name": "connectedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "lastheartbeat": {
+          "name": "lastheartbeat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "wssessions_userid_users_id_fk": {
+          "name": "wssessions_userid_users_id_fk",
+          "tableFrom": "wssessions",
+          "tableTo": "users",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "userid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.communities": {
+      "name": "communities",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "avatarurl": {
+          "name": "avatarurl",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ownerid": {
+          "name": "ownerid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "channelid": {
+          "name": "channelid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "discoverability": {
+          "name": "discoverability",
+          "type": "communitydiscoverability",
+          "typeSchema": "yappchat",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'unlisted'"
+        },
+        "joinpolicy": {
+          "name": "joinpolicy",
+          "type": "communityjoinpolicy",
+          "typeSchema": "yappchat",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'approval'"
+        },
+        "retentionpolicy": {
+          "name": "retentionpolicy",
+          "type": "communityretention",
+          "typeSchema": "yappchat",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'forever'"
+        },
+        "retentiondays": {
+          "name": "retentiondays",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdat": {
+          "name": "createdat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedat": {
+          "name": "updatedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "communities_slug_key": {
+          "name": "communities_slug_key",
+          "columns": [
+            {
+              "expression": "slug",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "communities_channelid_channels_id_fk": {
+          "name": "communities_channelid_channels_id_fk",
+          "tableFrom": "communities",
+          "tableTo": "channels",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "channelid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.communityauditlog": {
+      "name": "communityauditlog",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "communityid": {
+          "name": "communityid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actorid": {
+          "name": "actorid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "eventtype": {
+          "name": "eventtype",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdat": {
+          "name": "createdat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "communityauditlog_communityid_idx": {
+          "name": "communityauditlog_communityid_idx",
+          "columns": [
+            {
+              "expression": "communityid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "communityauditlog_communityid_communities_id_fk": {
+          "name": "communityauditlog_communityid_communities_id_fk",
+          "tableFrom": "communityauditlog",
+          "tableTo": "communities",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "communityid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.communityinvites": {
+      "name": "communityinvites",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "communityid": {
+          "name": "communityid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tokenhash": {
+          "name": "tokenhash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "createdby": {
+          "name": "createdby",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expiresat": {
+          "name": "expiresat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "usedat": {
+          "name": "usedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdat": {
+          "name": "createdat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "communityinvites_tokenhash_key": {
+          "name": "communityinvites_tokenhash_key",
+          "columns": [
+            {
+              "expression": "tokenhash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "communityinvites_communityid_communities_id_fk": {
+          "name": "communityinvites_communityid_communities_id_fk",
+          "tableFrom": "communityinvites",
+          "tableTo": "communities",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "communityid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.communitymembers": {
+      "name": "communitymembers",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "communityid": {
+          "name": "communityid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "userid": {
+          "name": "userid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "communityrole",
+          "typeSchema": "yappchat",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'member'"
+        },
+        "availabilitystatus": {
+          "name": "availabilitystatus",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "availabilitynote": {
+          "name": "availabilitynote",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "joinedat": {
+          "name": "joinedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "communitymembers_comm_user_key": {
+          "name": "communitymembers_comm_user_key",
+          "columns": [
+            {
+              "expression": "communityid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "userid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "communitymembers_userid_idx": {
+          "name": "communitymembers_userid_idx",
+          "columns": [
+            {
+              "expression": "userid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "communitymembers_communityid_communities_id_fk": {
+          "name": "communitymembers_communityid_communities_id_fk",
+          "tableFrom": "communitymembers",
+          "tableTo": "communities",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "communityid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.joinrequests": {
+      "name": "joinrequests",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "communityid": {
+          "name": "communityid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "userid": {
+          "name": "userid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "joinrequeststatus",
+          "typeSchema": "yappchat",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "message": {
+          "name": "message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "requestedat": {
+          "name": "requestedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "decidedby": {
+          "name": "decidedby",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "decidedat": {
+          "name": "decidedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "joinrequests_community_status_idx": {
+          "name": "joinrequests_community_status_idx",
+          "columns": [
+            {
+              "expression": "communityid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "joinrequests_userid_idx": {
+          "name": "joinrequests_userid_idx",
+          "columns": [
+            {
+              "expression": "userid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "joinrequests_communityid_communities_id_fk": {
+          "name": "joinrequests_communityid_communities_id_fk",
+          "tableFrom": "joinrequests",
+          "tableTo": "communities",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "communityid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.spaceaichunks": {
+      "name": "spaceaichunks",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "spaceid": {
+          "name": "spaceid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sourceid": {
+          "name": "sourceid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "content": {
+          "name": "content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "anchor": {
+          "name": "anchor",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "tokens": {
+          "name": "tokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdat": {
+          "name": "createdat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "spaceaichunks_spaceid_idx": {
+          "name": "spaceaichunks_spaceid_idx",
+          "columns": [
+            {
+              "expression": "spaceid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "spaceaichunks_spaceid_spaces_id_fk": {
+          "name": "spaceaichunks_spaceid_spaces_id_fk",
+          "tableFrom": "spaceaichunks",
+          "tableTo": "spaces",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "spaceid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "spaceaichunks_sourceid_spaceaisources_id_fk": {
+          "name": "spaceaichunks_sourceid_spaceaisources_id_fk",
+          "tableFrom": "spaceaichunks",
+          "tableTo": "spaceaisources",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "sourceid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.spaceaiconfig": {
+      "name": "spaceaiconfig",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "spaceid": {
+          "name": "spaceid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "model": {
+          "name": "model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'claude-opus-4-8'"
+        },
+        "autoanswer": {
+          "name": "autoanswer",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "includehistory": {
+          "name": "includehistory",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "lastindexedat": {
+          "name": "lastindexedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdat": {
+          "name": "createdat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedat": {
+          "name": "updatedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "spaceaiconfig_spaceid_key": {
+          "name": "spaceaiconfig_spaceid_key",
+          "columns": [
+            {
+              "expression": "spaceid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "spaceaiconfig_spaceid_spaces_id_fk": {
+          "name": "spaceaiconfig_spaceid_spaces_id_fk",
+          "tableFrom": "spaceaiconfig",
+          "tableTo": "spaces",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "spaceid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.spaceaisources": {
+      "name": "spaceaisources",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "spaceid": {
+          "name": "spaceid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "spaceaisourcekind",
+          "typeSchema": "yappchat",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "url": {
+          "name": "url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "storagekey": {
+          "name": "storagekey",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "status": {
+          "name": "status",
+          "type": "spaceaisourcestatus",
+          "typeSchema": "yappchat",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pagecount": {
+          "name": "pagecount",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "crawledat": {
+          "name": "crawledat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdat": {
+          "name": "createdat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "spaceaisources_spaceid_idx": {
+          "name": "spaceaisources_spaceid_idx",
+          "columns": [
+            {
+              "expression": "spaceid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "spaceaisources_spaceid_spaces_id_fk": {
+          "name": "spaceaisources_spaceid_spaces_id_fk",
+          "tableFrom": "spaceaisources",
+          "tableTo": "spaces",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "spaceid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.spaces": {
+      "name": "spaces",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "communityid": {
+          "name": "communityid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "conversationid": {
+          "name": "conversationid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "topic": {
+          "name": "topic",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "mode": {
+          "name": "mode",
+          "type": "spacemode",
+          "typeSchema": "yappchat",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'chat'"
+        },
+        "discoverability": {
+          "name": "discoverability",
+          "type": "communitydiscoverability",
+          "typeSchema": "yappchat",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "joinpolicy": {
+          "name": "joinpolicy",
+          "type": "communityjoinpolicy",
+          "typeSchema": "yappchat",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "adminonly": {
+          "name": "adminonly",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "corponly": {
+          "name": "corponly",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "createdat": {
+          "name": "createdat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "spaces_communityid_idx": {
+          "name": "spaces_communityid_idx",
+          "columns": [
+            {
+              "expression": "communityid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "spaces_communityid_communities_id_fk": {
+          "name": "spaces_communityid_communities_id_fk",
+          "tableFrom": "spaces",
+          "tableTo": "communities",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "communityid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "spaces_conversationid_conversations_id_fk": {
+          "name": "spaces_conversationid_conversations_id_fk",
+          "tableFrom": "spaces",
+          "tableTo": "conversations",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "conversationid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.presentationattendees": {
+      "name": "presentationattendees",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "presentationid": {
+          "name": "presentationid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "userid": {
+          "name": "userid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "guestname": {
+          "name": "guestname",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "role": {
+          "name": "role",
+          "type": "presentationattendeerole",
+          "typeSchema": "yappchat",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'attendee'"
+        },
+        "handraisedat": {
+          "name": "handraisedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "handresolvedat": {
+          "name": "handresolvedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "joinedat": {
+          "name": "joinedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "leftat": {
+          "name": "leftat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "presentationattendees_presentationid_idx": {
+          "name": "presentationattendees_presentationid_idx",
+          "columns": [
+            {
+              "expression": "presentationid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "presentationattendees_pres_user_idx": {
+          "name": "presentationattendees_pres_user_idx",
+          "columns": [
+            {
+              "expression": "presentationid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "userid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "presentationattendees_pres_hand_idx": {
+          "name": "presentationattendees_pres_hand_idx",
+          "columns": [
+            {
+              "expression": "presentationid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "handraisedat",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "presentationattendees_presentationid_presentations_id_fk": {
+          "name": "presentationattendees_presentationid_presentations_id_fk",
+          "tableFrom": "presentationattendees",
+          "tableTo": "presentations",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "presentationid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.presentationcaptions": {
+      "name": "presentationcaptions",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "presentationid": {
+          "name": "presentationid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "language": {
+          "name": "language",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "text": {
+          "name": "text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "offsetms": {
+          "name": "offsetms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdat": {
+          "name": "createdat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "presentationcaptions_presentationid_idx": {
+          "name": "presentationcaptions_presentationid_idx",
+          "columns": [
+            {
+              "expression": "presentationid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "presentationcaptions_presentationid_presentations_id_fk": {
+          "name": "presentationcaptions_presentationid_presentations_id_fk",
+          "tableFrom": "presentationcaptions",
+          "tableTo": "presentations",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "presentationid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.presentationinvites": {
+      "name": "presentationinvites",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "presentationid": {
+          "name": "presentationid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "presentationvisibility",
+          "typeSchema": "yappchat",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tokenhash": {
+          "name": "tokenhash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "inviteduserid": {
+          "name": "inviteduserid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "invitedemail": {
+          "name": "invitedemail",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdby": {
+          "name": "createdby",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expiresat": {
+          "name": "expiresat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revokedat": {
+          "name": "revokedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdat": {
+          "name": "createdat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "presentationinvites_tokenhash_key": {
+          "name": "presentationinvites_tokenhash_key",
+          "columns": [
+            {
+              "expression": "tokenhash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "presentationinvites_presentationid_idx": {
+          "name": "presentationinvites_presentationid_idx",
+          "columns": [
+            {
+              "expression": "presentationid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "presentationinvites_presentationid_presentations_id_fk": {
+          "name": "presentationinvites_presentationid_presentations_id_fk",
+          "tableFrom": "presentationinvites",
+          "tableTo": "presentations",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "presentationid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.presentationrecordings": {
+      "name": "presentationrecordings",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "presentationid": {
+          "name": "presentationid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mediaurl": {
+          "name": "mediaurl",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "durationms": {
+          "name": "durationms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "presentationrecordingstatus",
+          "typeSchema": "yappchat",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'processing'"
+        },
+        "deletedat": {
+          "name": "deletedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdat": {
+          "name": "createdat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "presentationrecordings_presentationid_idx": {
+          "name": "presentationrecordings_presentationid_idx",
+          "columns": [
+            {
+              "expression": "presentationid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "presentationrecordings_presentationid_presentations_id_fk": {
+          "name": "presentationrecordings_presentationid_presentations_id_fk",
+          "tableFrom": "presentationrecordings",
+          "tableTo": "presentations",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "presentationid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.presentations": {
+      "name": "presentations",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "hostuserid": {
+          "name": "hostuserid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "coverimageurl": {
+          "name": "coverimageurl",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "visibility": {
+          "name": "visibility",
+          "type": "presentationvisibility",
+          "typeSchema": "yappchat",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'private'"
+        },
+        "communityid": {
+          "name": "communityid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "spokenlanguage": {
+          "name": "spokenlanguage",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'en'"
+        },
+        "scheduledstart": {
+          "name": "scheduledstart",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scheduledend": {
+          "name": "scheduledend",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "maxattendees": {
+          "name": "maxattendees",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 100
+        },
+        "status": {
+          "name": "status",
+          "type": "presentationstatus",
+          "typeSchema": "yappchat",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'scheduled'"
+        },
+        "startedat": {
+          "name": "startedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "endedat": {
+          "name": "endedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdat": {
+          "name": "createdat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedat": {
+          "name": "updatedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "presentations_hostuserid_idx": {
+          "name": "presentations_hostuserid_idx",
+          "columns": [
+            {
+              "expression": "hostuserid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "presentations_communityid_idx": {
+          "name": "presentations_communityid_idx",
+          "columns": [
+            {
+              "expression": "communityid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "presentations_status_start_idx": {
+          "name": "presentations_status_start_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "scheduledstart",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "presentations_communityid_communities_id_fk": {
+          "name": "presentations_communityid_communities_id_fk",
+          "tableFrom": "presentations",
+          "tableTo": "communities",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "communityid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.supportsessions": {
+      "name": "supportsessions",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "conversationid": {
+          "name": "conversationid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "orgid": {
+          "name": "orgid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "appkey": {
+          "name": "appkey",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "supportstatus",
+          "typeSchema": "yappchat",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'open'"
+        },
+        "requesterid": {
+          "name": "requesterid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "assignedagentid": {
+          "name": "assignedagentid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdat": {
+          "name": "createdat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "closedat": {
+          "name": "closedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "supportsessions_orgid_status_idx": {
+          "name": "supportsessions_orgid_status_idx",
+          "columns": [
+            {
+              "expression": "orgid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "supportsessions_conversationid_idx": {
+          "name": "supportsessions_conversationid_idx",
+          "columns": [
+            {
+              "expression": "conversationid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "supportsessions_conversationid_conversations_id_fk": {
+          "name": "supportsessions_conversationid_conversations_id_fk",
+          "tableFrom": "supportsessions",
+          "tableTo": "conversations",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "conversationid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "supportsessions_orgid_orgs_id_fk": {
+          "name": "supportsessions_orgid_orgs_id_fk",
+          "tableFrom": "supportsessions",
+          "tableTo": "orgs",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "orgid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.contactinvites": {
+      "name": "contactinvites",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "inviterid": {
+          "name": "inviterid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tokenhash": {
+          "name": "tokenhash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expiresat": {
+          "name": "expiresat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "consumedat": {
+          "name": "consumedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdat": {
+          "name": "createdat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "contactinvites_tokenhash_key": {
+          "name": "contactinvites_tokenhash_key",
+          "columns": [
+            {
+              "expression": "tokenhash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "contactinvites_inviter_idx": {
+          "name": "contactinvites_inviter_idx",
+          "columns": [
+            {
+              "expression": "inviterid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "contactinvites_inviterid_users_id_fk": {
+          "name": "contactinvites_inviterid_users_id_fk",
+          "tableFrom": "contactinvites",
+          "tableTo": "users",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "inviterid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "yappchat.contacts": {
+      "name": "contacts",
+      "schema": "yappchat",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "requesterid": {
+          "name": "requesterid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "addresseeid": {
+          "name": "addresseeid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "contactstatus",
+          "typeSchema": "yappchat",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "conversationid": {
+          "name": "conversationid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdat": {
+          "name": "createdat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "respondedat": {
+          "name": "respondedat",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "contacts_pair_key": {
+          "name": "contacts_pair_key",
+          "columns": [
+            {
+              "expression": "requesterid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "addresseeid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "contacts_addressee_idx": {
+          "name": "contacts_addressee_idx",
+          "columns": [
+            {
+              "expression": "addresseeid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "contacts_requester_idx": {
+          "name": "contacts_requester_idx",
+          "columns": [
+            {
+              "expression": "requesterid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "contacts_requesterid_users_id_fk": {
+          "name": "contacts_requesterid_users_id_fk",
+          "tableFrom": "contacts",
+          "tableTo": "users",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "requesterid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "contacts_addresseeid_users_id_fk": {
+          "name": "contacts_addresseeid_users_id_fk",
+          "tableFrom": "contacts",
+          "tableTo": "users",
+          "schemaTo": "yappchat",
+          "columnsFrom": [
+            "addresseeid"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {
+    "yappchat.orgrole": {
+      "name": "orgrole",
+      "schema": "yappchat",
+      "values": [
+        "owner",
+        "admin",
+        "member"
+      ]
+    },
+    "yappchat.plan": {
+      "name": "plan",
+      "schema": "yappchat",
+      "values": [
+        "individual",
+        "corporate"
+      ]
+    },
+    "yappchat.plantype": {
+      "name": "plantype",
+      "schema": "yappchat",
+      "values": [
+        "individual",
+        "corporate"
+      ]
+    },
+    "yappchat.userkind": {
+      "name": "userkind",
+      "schema": "yappchat",
+      "values": [
+        "human",
+        "agent"
+      ]
+    },
+    "yappchat.skillcategory": {
+      "name": "skillcategory",
+      "schema": "yappchat",
+      "values": [
+        "productivity",
+        "communication",
+        "data",
+        "development",
+        "finance",
+        "media",
+        "integration",
+        "custom"
+      ]
+    },
+    "yappchat.skillcreatedby": {
+      "name": "skillcreatedby",
+      "schema": "yappchat",
+      "values": [
+        "studio",
+        "pa",
+        "import"
+      ]
+    },
+    "yappchat.aiprovidertype": {
+      "name": "aiprovidertype",
+      "schema": "yappchat",
+      "values": [
+        "openai-compatible",
+        "anthropic",
+        "ollama",
+        "custom"
+      ]
+    },
+    "yappchat.assistantrole": {
+      "name": "assistantrole",
+      "schema": "yappchat",
+      "values": [
+        "user",
+        "assistant",
+        "tool_result"
+      ]
+    },
+    "yappchat.invokedby": {
+      "name": "invokedby",
+      "schema": "yappchat",
+      "values": [
+        "pa",
+        "subagent",
+        "studio_test"
+      ]
+    },
+    "yappchat.ackstate": {
+      "name": "ackstate",
+      "schema": "yappchat",
+      "values": [
+        "pending",
+        "acked",
+        "nacked"
+      ]
+    },
+    "yappchat.channelstatus": {
+      "name": "channelstatus",
+      "schema": "yappchat",
+      "values": [
+        "healthy",
+        "degraded",
+        "offline"
+      ]
+    },
+    "yappchat.conversationkind": {
+      "name": "conversationkind",
+      "schema": "yappchat",
+      "values": [
+        "channel",
+        "group",
+        "person",
+        "agent",
+        "space",
+        "support"
+      ]
+    },
+    "yappchat.msgdirection": {
+      "name": "msgdirection",
+      "schema": "yappchat",
+      "values": [
+        "inbound",
+        "outbound"
+      ]
+    },
+    "yappchat.msgencryptiontype": {
+      "name": "msgencryptiontype",
+      "schema": "yappchat",
+      "values": [
+        "e2e",
+        "agent-e2e",
+        "platform"
+      ]
+    },
+    "yappchat.msgtype": {
+      "name": "msgtype",
+      "schema": "yappchat",
+      "values": [
+        "chat",
+        "status"
+      ]
+    },
+    "yappchat.communitydiscoverability": {
+      "name": "communitydiscoverability",
+      "schema": "yappchat",
+      "values": [
+        "public",
+        "unlisted"
+      ]
+    },
+    "yappchat.communityjoinpolicy": {
+      "name": "communityjoinpolicy",
+      "schema": "yappchat",
+      "values": [
+        "open",
+        "approval",
+        "invite"
+      ]
+    },
+    "yappchat.communityretention": {
+      "name": "communityretention",
+      "schema": "yappchat",
+      "values": [
+        "forever",
+        "days"
+      ]
+    },
+    "yappchat.communityrole": {
+      "name": "communityrole",
+      "schema": "yappchat",
+      "values": [
+        "owner",
+        "moderator",
+        "member"
+      ]
+    },
+    "yappchat.joinrequeststatus": {
+      "name": "joinrequeststatus",
+      "schema": "yappchat",
+      "values": [
+        "pending",
+        "approved",
+        "denied"
+      ]
+    },
+    "yappchat.spaceaisourcekind": {
+      "name": "spaceaisourcekind",
+      "schema": "yappchat",
+      "values": [
+        "website",
+        "document",
+        "history"
+      ]
+    },
+    "yappchat.spaceaisourcestatus": {
+      "name": "spaceaisourcestatus",
+      "schema": "yappchat",
+      "values": [
+        "pending",
+        "indexing",
+        "ready",
+        "error"
+      ]
+    },
+    "yappchat.spacemode": {
+      "name": "spacemode",
+      "schema": "yappchat",
+      "values": [
+        "chat",
+        "broadcast"
+      ]
+    },
+    "yappchat.presentationattendeerole": {
+      "name": "presentationattendeerole",
+      "schema": "yappchat",
+      "values": [
+        "host",
+        "attendee"
+      ]
+    },
+    "yappchat.presentationstatus": {
+      "name": "presentationstatus",
+      "schema": "yappchat",
+      "values": [
+        "scheduled",
+        "live",
+        "ended",
+        "canceled"
+      ]
+    },
+    "yappchat.presentationvisibility": {
+      "name": "presentationvisibility",
+      "schema": "yappchat",
+      "values": [
+        "public",
+        "private"
+      ]
+    },
+    "yappchat.presentationrecordingstatus": {
+      "name": "presentationrecordingstatus",
+      "schema": "yappchat",
+      "values": [
+        "processing",
+        "ready",
+        "failed"
+      ]
+    },
+    "yappchat.supportstatus": {
+      "name": "supportstatus",
+      "schema": "yappchat",
+      "values": [
+        "open",
+        "assigned",
+        "closed"
+      ]
+    },
+    "yappchat.contactstatus": {
+      "name": "contactstatus",
+      "schema": "yappchat",
+      "values": [
+        "pending",
+        "accepted",
+        "declined"
+      ]
+    }
+  },
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

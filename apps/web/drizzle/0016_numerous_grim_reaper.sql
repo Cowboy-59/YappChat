@@ -1,0 +1,1 @@
+ALTER TABLE "yappchat"."spaces" ADD COLUMN "corponly" boolean DEFAULT false NOT NULL;

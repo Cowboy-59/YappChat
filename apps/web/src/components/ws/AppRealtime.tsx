@@ -1,0 +1,30 @@
+"use client";
+
+import { WSProvider, useWSEvent } from "./WSProvider";
+import { WSEventType } from "@/lib/ws/events";
+
+/**
+ * Spec 011 integration over the spec 003 WS engine:
+ *  - auth.signed_out → "sign out everywhere" (logout-all, family revoke, password
+ *    reset): every device for the user drops.
+ *  - auth.force_signout → TARGETED: only the device whose session id matches the
+ *    event payload drops; the user's other devices ignore it (FR-013).
+ * (Spec 008 seam: SecureKeyStore.clearUser would also run here on native.)
+ */
+function AuthSignoutListener({ currentSessionId }: { currentSessionId: string | null }) {
+  useWSEvent(WSEventType.AuthSignedOut, () => window.location.assign("/?signedout=1"));
+  useWSEvent(WSEventType.AuthForceSignout, (event) => {
+    const sid = (event.payload as { sessionid?: string } | undefined)?.sessionid;
+    // No sessionid → treat as broad sign-out; otherwise only the targeted device.
+    if (!sid || sid === currentSessionId) window.location.assign("/?signedout=forced");
+  });
+  return null;
+}
+
+export function AppRealtime({ currentSessionId = null }: { currentSessionId?: string | null }) {
+  return (
+    <WSProvider>
+      <AuthSignoutListener currentSessionId={currentSessionId} />
+    </WSProvider>
+  );
+}

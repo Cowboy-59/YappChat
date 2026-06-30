@@ -1,0 +1,1 @@
+ALTER TABLE "yappchat"."spaces" ADD COLUMN "adminonly" boolean DEFAULT false NOT NULL;

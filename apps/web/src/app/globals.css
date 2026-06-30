@@ -1,0 +1,165 @@
+@import "tailwindcss";
+
+/* Dark mode follows our explicit data-theme toggle (set by the inline script in
+ * layout.tsx). Same shadcn token system as wxKanban, keyed off data-theme so the
+ * existing ThemeToggle + no-flash boot script keep working. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/*
+ * shadcn/ui semantic tokens → Tailwind v4 color utilities. Palette is ported
+ * verbatim from wxKanban (src/client/styles/index.css) so the two apps match.
+ */
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  /* --surface keeps existing YappChatt usages working (maps to the muted tint). */
+  --color-surface: hsl(var(--surface));
+  --radius: 0.5rem;
+  --font-sans: var(--font-open-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+:root {
+  --background: 0 0% 100%;
+  --foreground: 222.2 84% 4.9%;
+  --card: 0 0% 100%;
+  --card-foreground: 222.2 84% 4.9%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222.2 84% 4.9%;
+  --primary: 222.2 47.4% 11.2%;
+  --primary-foreground: 210 40% 98%;
+  --secondary: 210 40% 96.1%;
+  --secondary-foreground: 222.2 47.4% 11.2%;
+  --muted: 210 40% 96.1%;
+  --muted-foreground: 215.4 16.3% 46.9%;
+  --accent: 210 40% 96.1%;
+  --accent-foreground: 222.2 47.4% 11.2%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 214.3 31.8% 91.4%;
+  --input: 214.3 31.8% 91.4%;
+  --ring: 222.2 84% 4.9%;
+  --surface: 210 40% 96.1%;
+}
+
+:root[data-theme="dark"] {
+  --background: 222.2 84% 4.9%;
+  --foreground: 210 40% 98%;
+  --card: 217 19% 21%; /* elevated "lighter black" panel, ~+16% L over the bg */
+  --card-foreground: 210 40% 98%;
+  --popover: 217 19% 21%;
+  --popover-foreground: 210 40% 98%;
+  --primary: 210 40% 98%;
+  --primary-foreground: 222.2 47.4% 11.2%;
+  --secondary: 217.2 32.6% 17.5%;
+  --secondary-foreground: 210 40% 98%;
+  --muted: 217.2 32.6% 17.5%;
+  --muted-foreground: 215 20.2% 65.1%;
+  --accent: 217.2 32.6% 17.5%;
+  --accent-foreground: 210 40% 98%;
+  --destructive: 0 72% 51%; /* brightened for contrast on the dark card (was 30.6% L → looked blank) */
+  --destructive-foreground: 210 40% 98%;
+  --border: 217.2 32.6% 17.5%;
+  --input: 217.2 32.6% 17.5%;
+  --ring: 212.7 26.8% 83.9%;
+  --surface: 217.2 32.6% 17.5%;
+  /* Purple halo around panels (dark only). Tune intensity here. */
+  --panel-glow: 0 0 0 1px rgba(139, 92, 246, 0.25), 0 14px 46px -12px rgba(139, 92, 246, 0.55);
+}
+
+/* No-JS / pre-hydration: honour OS dark when no explicit choice is set. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 217 19% 21%;
+    --card-foreground: 210 40% 98%;
+    --popover: 217 19% 21%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+    --surface: 217.2 32.6% 17.5%;
+    --panel-glow: 0 0 0 1px rgba(139, 92, 246, 0.25), 0 14px 46px -12px rgba(139, 92, 246, 0.55);
+  }
+}
+
+/*
+ * Match wxKanban's shadcn Card panel exactly: `rounded-lg border bg-card
+ * text-card-foreground shadow-sm`. Our panels use `rounded-xl ... bg-card`, so
+ * normalize any rounded card surface to the --radius (0.5rem) + the Tailwind v4
+ * `shadow-sm`. Scoped to rounded cards, so the flush sidebar and round controls
+ * (rounded-full) are untouched.
+ */
+.bg-card.rounded-xl,
+.bg-card.rounded-lg,
+.bg-card.rounded-md {
+  border-radius: var(--radius);
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+}
+
+/* Purple glow around panels AND the sidebar in dark mode (any bg-card surface
+ * except round controls like the theme toggle). */
+:root[data-theme="dark"] .bg-card:not(.rounded-full) {
+  box-shadow: var(--panel-glow);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .bg-card:not(.rounded-full) {
+    box-shadow: var(--panel-glow);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+html {
+  scroll-behavior: smooth;
+}

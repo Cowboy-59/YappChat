@@ -1,0 +1,18 @@
+# Build context hygiene for Dockerfile.ws (and any future apps/web image).
+node_modules
+.next
+out
+dist
+coverage
+
+# Never bake secrets/env into the image — config comes from the ECS task env.
+.env
+.env.*
+!.env.example
+
+# VCS / editor / logs
+.git
+.gitignore
+*.log
+.history
+.DS_Store
