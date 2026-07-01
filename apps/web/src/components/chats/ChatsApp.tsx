@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { WSProvider, useWSClient, useWSEvent } from "@/components/ws/WSProvider";
 import { scopes, type WSEvent } from "@/lib/ws/events";
 
-type Message = { id: string; authorid: string; authorname?: string | null; content: string | null; direction: string; conversationid?: string };
+type Message = { id: string; authorid: string; authorname?: string | null; content: string | null; direction: string; conversationid?: string; createdat?: string };
 type UserLite = { id: string; displayname: string; email: string };
 type Contact = UserLite & { conversationid: string | null };
 type Request = { contactid: string; conversationid: string | null; from: UserLite };
@@ -20,6 +20,13 @@ const ghost = `${btn} border border-border hover:bg-muted`;
 
 function label(u: UserLite): string {
   return u.displayname?.trim() || u.email.split("@")[0];
+}
+
+/** Format a UTC ISO timestamp in the reader's local timezone (e.g. "Jun 22, 2:45 PM"). */
+function localTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
 function Inner() {
@@ -249,21 +256,35 @@ function Inner() {
           <>
             <div className="border-b border-border px-4 py-3 text-sm font-semibold text-foreground">{activeName || "Chat"}</div>
             <div className="flex-1 space-y-3 overflow-y-auto p-4">
-              {messages.map((m) =>
-                m.authorid === SYSTEM_AUTHOR ? (
-                  <p key={m.id} className="text-center text-xs italic text-muted-foreground">
-                    {m.content}
-                  </p>
-                ) : (
-                  <div key={m.id} className={m.direction === "outbound" ? "text-right" : "text-left"}>
-                    <span
-                      className={`inline-block max-w-[75%] whitespace-pre-wrap rounded-2xl px-3 py-1.5 text-sm ${m.direction === "outbound" ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"}`}
-                    >
+              {messages.map((m) => {
+                if (m.authorid === SYSTEM_AUTHOR) {
+                  return (
+                    <p key={m.id} className="text-center text-xs italic text-muted-foreground">
                       {m.content}
-                    </span>
+                    </p>
+                  );
+                }
+                const mine = m.authorid === me;
+                return (
+                  <div key={m.id} className={mine ? "text-right" : "text-left"}>
+                    <div className={`mb-0.5 flex items-baseline gap-2 px-1 ${mine ? "justify-end" : "justify-start"}`}>
+                      <span className="text-xs font-semibold text-muted-foreground">
+                        {m.authorname ?? `${m.authorid.slice(0, 8)}…`}
+                      </span>
+                      <span className="text-[11px] text-muted-foreground/70" title={m.createdat ? new Date(m.createdat).toLocaleString() : ""}>
+                        {m.createdat ? localTime(m.createdat) : ""}
+                      </span>
+                    </div>
+                    {m.content && (
+                      <span
+                        className={`inline-block max-w-[75%] whitespace-pre-wrap break-words rounded-2xl px-3 py-1.5 text-sm ${mine ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"}`}
+                      >
+                        {m.content}
+                      </span>
+                    )}
                   </div>
-                ),
-              )}
+                );
+              })}
               {messages.length === 0 && <p className="text-sm text-muted-foreground">No messages yet.</p>}
             </div>
 
