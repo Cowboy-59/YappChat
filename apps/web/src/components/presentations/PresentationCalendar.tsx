@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
 
 /**
  * Spec 071 / shell — month-grid calendar of all presentations the viewer can
@@ -16,6 +17,7 @@ export type CalendarItem = {
   status: string; // scheduled | live | ended
   visibility: string;
   scheduledstart: string; // ISO
+  mine?: boolean; // viewer is the host → can delete it
 };
 
 const statusDot: Record<string, string> = {
@@ -31,8 +33,19 @@ function ymd(d: Date): string {
 }
 
 export function PresentationCalendar({ items }: { items: CalendarItem[] }) {
+  const router = useRouter();
   const today = new Date();
   const [cursor, setCursor] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  async function deleteItem(id: string, title: string) {
+    if (!window.confirm(`Delete "${title}"? This cancels the presentation and removes it from the calendar.`)) return;
+    setBusyId(id);
+    const r = await fetch(`/api/presentations/${id}`, { method: "DELETE", credentials: "include" });
+    setBusyId(null);
+    if (r.ok) router.refresh();
+    else window.alert("Could not delete — only the host can remove a presentation.");
+  }
 
   // Bucket events by local calendar day.
   const byDay = useMemo(() => {
@@ -122,15 +135,31 @@ export function PresentationCalendar({ items }: { items: CalendarItem[] }) {
               </div>
               <div className="space-y-1">
                 {events.slice(0, 3).map((ev) => (
-                  <Link
+                  <div
                     key={ev.id}
-                    href={`/presentations/${ev.id}`}
-                    title={`${ev.title} · ${new Date(ev.scheduledstart).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`}
-                    className="flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[11px] hover:bg-muted/70"
+                    className="group flex items-center rounded bg-muted text-[11px] hover:bg-muted/70"
                   >
-                    <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${statusDot[ev.status] ?? "bg-primary"}`} />
-                    <span className="truncate">{ev.title}</span>
-                  </Link>
+                    <Link
+                      href={`/presentations/${ev.id}`}
+                      title={`${ev.title} · ${new Date(ev.scheduledstart).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`}
+                      className="flex min-w-0 flex-1 items-center gap-1 px-1.5 py-0.5"
+                    >
+                      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${statusDot[ev.status] ?? "bg-primary"}`} />
+                      <span className="truncate">{ev.title}</span>
+                    </Link>
+                    {ev.mine && (
+                      <button
+                        type="button"
+                        onClick={() => void deleteItem(ev.id, ev.title)}
+                        disabled={busyId === ev.id}
+                        aria-label={`Delete ${ev.title}`}
+                        title="Delete presentation"
+                        className="mr-0.5 hidden shrink-0 rounded p-0.5 text-muted-foreground hover:text-destructive group-hover:block disabled:opacity-50"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
                 ))}
                 {events.length > 3 && (
                   <div className="px-1 text-[10px] text-muted-foreground">+{events.length - 3} more</div>

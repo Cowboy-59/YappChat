@@ -7,13 +7,27 @@ import { SUPPORTED_LANGUAGES } from "@/lib/account/languages";
 const field = "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm";
 const label = "block text-xs font-semibold text-muted-foreground";
 
+/** Local YYYY-MM-DD / HH:MM for the date + time inputs (native, timezone-safe). */
+function pad(n: number): string {
+  return String(n).padStart(2, "0");
+}
+function localDate(d: Date): string {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+function localTime(d: Date): string {
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 /** Spec 071 T009 — schedule a presentation (FR-001). Cover upload reuses /api/upload (spec 068 S3 pattern). */
 export function SchedulePresentationForm() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [scheduledstart, setStart] = useState("");
+  // Date + time are captured separately (calendar picker + time picker) and
+  // combined into a local Date on submit.
+  const [date, setDate] = useState("");
+  const [time, setTime] = useState("");
   const [visibility, setVisibility] = useState<"public" | "private">("private");
   const [spokenlanguage, setLang] = useState("en");
   const [coverimageurl, setCover] = useState<string | null>(null);
@@ -50,7 +64,8 @@ export function SchedulePresentationForm() {
         visibility,
         spokenlanguage,
         coverimageurl,
-        scheduledstart: new Date(scheduledstart).toISOString(),
+        // Combine the calendar date + time as a LOCAL datetime, then normalize to UTC.
+        scheduledstart: new Date(`${date}T${time}`).toISOString(),
       }),
     });
     setBusy(false);
@@ -58,7 +73,8 @@ export function SchedulePresentationForm() {
       setOpen(false);
       setTitle("");
       setDescription("");
-      setStart("");
+      setDate("");
+      setTime("");
       setCover(null);
       router.refresh();
     } else {
@@ -66,10 +82,23 @@ export function SchedulePresentationForm() {
     }
   }
 
+  /** Open the form, seeding the calendar to the next round half-hour ~1h out. */
+  function openForm() {
+    if (!date || !time) {
+      const d = new Date(Date.now() + 60 * 60 * 1000);
+      d.setMinutes(d.getMinutes() < 30 ? 30 : 60, 0, 0);
+      if (!date) setDate(localDate(d));
+      if (!time) setTime(localTime(d));
+    }
+    setOpen(true);
+  }
+
+  const today = localDate(new Date());
+
   if (!open) {
     return (
       <button
-        onClick={() => setOpen(true)}
+        onClick={openForm}
         className="inline-flex min-h-[36px] items-center rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:opacity-90"
       >
         + Schedule a presentation
@@ -93,14 +122,26 @@ export function SchedulePresentationForm() {
       </label>
       <div className="grid grid-cols-2 gap-3">
         <label className={label}>
-          Start
+          Date
           <input
-            type="datetime-local"
+            type="date"
+            min={today}
             className={`${field} mt-1`}
-            value={scheduledstart}
-            onChange={(e) => setStart(e.target.value)}
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
           />
         </label>
+        <label className={label}>
+          Time
+          <input
+            type="time"
+            className={`${field} mt-1`}
+            value={time}
+            onChange={(e) => setTime(e.target.value)}
+          />
+        </label>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
         <label className={label}>
           Spoken language
           <select className={`${field} mt-1`} value={spokenlanguage} onChange={(e) => setLang(e.target.value)}>
@@ -111,8 +152,6 @@ export function SchedulePresentationForm() {
             ))}
           </select>
         </label>
-      </div>
-      <div className="grid grid-cols-2 gap-3">
         <label className={label}>
           Visibility
           <select
@@ -124,33 +163,33 @@ export function SchedulePresentationForm() {
             <option value="public">Public (guests allowed)</option>
           </select>
         </label>
-        <div>
-          <span className={label}>Cover image</span>
-          <button
-            type="button"
-            onClick={() => fileInput.current?.click()}
-            disabled={busy}
-            className="mt-1 inline-flex min-h-[38px] w-full items-center justify-center rounded-lg border border-border px-3 text-sm hover:bg-muted disabled:opacity-50"
-          >
-            {coverimageurl ? "Cover ✓ — replace" : busy ? "Working…" : "Upload cover"}
-          </button>
-          <input
-            ref={fileInput}
-            type="file"
-            accept="image/png,image/jpeg,image/gif,image/webp"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) void uploadCover(f);
-              e.target.value = "";
-            }}
-          />
-        </div>
+      </div>
+      <div>
+        <span className={label}>Cover image</span>
+        <button
+          type="button"
+          onClick={() => fileInput.current?.click()}
+          disabled={busy}
+          className="mt-1 inline-flex min-h-[38px] w-full items-center justify-center rounded-lg border border-border px-3 text-sm hover:bg-muted disabled:opacity-50"
+        >
+          {coverimageurl ? "Cover ✓ — replace" : busy ? "Working…" : "Upload cover"}
+        </button>
+        <input
+          ref={fileInput}
+          type="file"
+          accept="image/png,image/jpeg,image/gif,image/webp"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void uploadCover(f);
+            e.target.value = "";
+          }}
+        />
       </div>
       <div className="flex gap-2">
         <button
           onClick={submit}
-          disabled={busy || !title.trim() || !scheduledstart}
+          disabled={busy || !title.trim() || !date || !time}
           className="inline-flex min-h-[36px] items-center rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
         >
           {busy ? "Saving…" : "Schedule"}

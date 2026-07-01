@@ -18,6 +18,7 @@ export default async function PresentationsPage() {
     status: p.status,
     visibility: p.visibility,
     scheduledstart: new Date(p.scheduledstart).toISOString(),
+    mine: p.hostuserid === user.id, // host can delete it from the calendar
   }));
 
   return (
