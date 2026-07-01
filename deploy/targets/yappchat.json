@@ -34,14 +34,20 @@
       "EMAIL_FROM": "YappChat <admin@wxperts.com>",
       "S3_BUCKET": "yappchat-chat-media-907693067083",
       "AWS_REGION": "us-east-2",
-      "WS_INTERNAL_URL": "https://ya-da8cd67514994597912a3f06fa776257.ecs.us-east-2.on.aws"
+      "WS_INTERNAL_URL": "https://ya-da8cd67514994597912a3f06fa776257.ecs.us-east-2.on.aws",
+      "LIVEKIT_URL": "wss://yappchatt-jwqsl650.livekit.cloud",
+      "GROQ_MODEL": "llama-3.3-70b-versatile",
+      "GROQ_STT_MODEL": "whisper-large-v3-turbo"
     },
     "secrets": {
       "DATABASE_URL": "arn:aws:ssm:<REGION>:<ACCOUNT_ID>:parameter/yappchat/web/DATABASE_URL",
       "WS_INTERNAL_SECRET": "arn:aws:ssm:<REGION>:<ACCOUNT_ID>:parameter/yappchat/web/WS_INTERNAL_SECRET",
       "GOOGLE_CLIENT_ID": "arn:aws:ssm:<REGION>:<ACCOUNT_ID>:parameter/yappchat/web/GOOGLE_CLIENT_ID",
       "GOOGLE_CLIENT_SECRET": "arn:aws:ssm:<REGION>:<ACCOUNT_ID>:parameter/yappchat/web/GOOGLE_CLIENT_SECRET",
-      "GIPHY_API_KEY": "arn:aws:ssm:<REGION>:<ACCOUNT_ID>:parameter/yappchat/web/GIPHY_API_KEY"
+      "GIPHY_API_KEY": "arn:aws:ssm:<REGION>:<ACCOUNT_ID>:parameter/yappchat/web/GIPHY_API_KEY",
+      "LIVEKIT_API_KEY": "arn:aws:ssm:<REGION>:<ACCOUNT_ID>:parameter/yappchat/web/LIVEKIT_API_KEY",
+      "LIVEKIT_API_SECRET": "arn:aws:ssm:<REGION>:<ACCOUNT_ID>:parameter/yappchat/web/LIVEKIT_API_SECRET",
+      "GROQ_API_KEY": "arn:aws:ssm:<REGION>:<ACCOUNT_ID>:parameter/yappchat/web/GROQ_API_KEY"
     }
   },
   "tags": {
