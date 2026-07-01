@@ -66,7 +66,7 @@ export function GifPicker({ onPick, onClose }: { onPick: (url: string) => void; 
             className="overflow-hidden rounded-lg border border-border hover:opacity-80"
           >
             {/* eslint-disable-next-line @next/next/no-img-element -- remote Giphy preview thumbnail */}
-            <img src={g.preview} alt={g.title} className="h-32 w-full object-cover" loading="lazy" />
+            <img src={g.preview} alt={g.title} className="h-40 w-full object-cover" loading="lazy" />
           </button>
         ))}
         {!loading && !note && results.length === 0 && <p className="col-span-2 px-1 py-2 text-xs text-muted-foreground">No GIFs found.</p>}
