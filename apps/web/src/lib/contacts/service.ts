@@ -1,9 +1,9 @@
-import { and, desc, eq, ilike, isNotNull, isNull, lt, ne, or } from "drizzle-orm";
+import { and, desc, eq, gt, ilike, isNotNull, isNull, lt, ne, or } from "drizzle-orm";
 import { uuidv7 } from "uuidv7";
 import { getDb } from "../db/client";
 import { users } from "../db/auth-schema";
 import { contactinvites, contacts, type ContactRow } from "../db/contacts-schema";
-import { channels, conversationmembers, conversations } from "../db/engine-schema";
+import { channels, conversationmembers, conversations, messages } from "../db/engine-schema";
 import { addConversationMember, createConversation, postSystemMessage, registerChannel } from "../engine/service";
 import { generateToken, hashToken } from "../auth/crypto";
 import { sendEmail } from "../auth/mailer";
@@ -31,6 +31,8 @@ import { guardContactFloodOrThrow } from "./flood";
  */
 
 const DIRECT_PLATFORM = "yappchat-internal";
+/** Author id for the contact system notices ("wants to connect" / "now connected"). */
+const CONTACT_SYSTEM_AUTHOR = "yappchat-contact";
 const INVITE_TTL_MS = 7 * 24 * 3_600_000;
 /** Declined rows are retained as short-term history, then purgeable (privacy control). */
 const DECLINED_RETENTION_MS = 24 * 3_600_000;
@@ -146,7 +148,7 @@ async function getOrCreateDirectConversation(a: string, b: string): Promise<stri
 async function postWantsToConnect(db: Db, conversationid: string, requesterid: string): Promise<void> {
   await postSystemMessage({
     conversationid,
-    authorid: "yappchat-contact",
+    authorid: CONTACT_SYSTEM_AUTHOR,
     authorname: "Contacts",
     content: `${await displayName(db, requesterid)} wants to connect and share contact info.`,
   });
@@ -155,7 +157,7 @@ async function postWantsToConnect(db: Db, conversationid: string, requesterid: s
 async function postConnected(db: Db, conversationid: string, accepterId: string): Promise<void> {
   await postSystemMessage({
     conversationid,
-    authorid: "yappchat-contact",
+    authorid: CONTACT_SYSTEM_AUTHOR,
     authorname: "Contacts",
     content: `${await displayName(db, accepterId)} accepted — you're now connected.`,
   });
@@ -271,6 +273,69 @@ export async function listIncomingRequests(userid: string): Promise<Array<{ cont
     if (u) out.push({ contactid: r.id, conversationid: r.conversationid, from: u });
   }
   return out;
+}
+
+/**
+ * The caller's OUTGOING pending connections (FR-008): requests they sent that are
+ * still awaiting a response, plus outstanding (unconsumed, unexpired) email invites.
+ * Rendered in the Chats "Pending" section; each entry is withdrawable/cancellable.
+ */
+export type OutgoingPending =
+  | { kind: "request"; contactid: string; conversationid: string | null; to: UserLite }
+  | { kind: "invite"; inviteid: string; email: string };
+
+export async function listOutgoing(userid: string): Promise<OutgoingPending[]> {
+  const db = getDb();
+  if (!db) return [];
+  const out: OutgoingPending[] = [];
+  // Requests I sent that are still pending (awaiting the addressee's accept/decline).
+  const reqs = await db
+    .select({ id: contacts.id, addresseeid: contacts.addresseeid, conversationid: contacts.conversationid })
+    .from(contacts)
+    .where(and(eq(contacts.status, "pending"), eq(contacts.requesterid, userid)));
+  for (const r of reqs) {
+    const [u] = await db.select({ id: users.id, displayname: users.displayname, email: users.email }).from(users).where(eq(users.id, r.addresseeid)).limit(1);
+    if (u) out.push({ kind: "request", contactid: r.id, conversationid: r.conversationid, to: u });
+  }
+  // Email invites to non-users, not yet consumed and not expired.
+  const invs = await db
+    .select({ id: contactinvites.id, email: contactinvites.email })
+    .from(contactinvites)
+    .where(and(eq(contactinvites.inviterid, userid), isNull(contactinvites.consumedat), gt(contactinvites.expiresat, new Date())));
+  for (const iv of invs) out.push({ kind: "invite", inviteid: iv.id, email: iv.email });
+  return out;
+}
+
+/**
+ * Withdraw the caller's own still-pending outgoing request (FR-008). Requester-only,
+ * `pending`-only — a responded (`accepted`/`declined`) row is terminal (FR-018-2.1).
+ * Retracts BOTH sides: deletes the pending row AND the contact system message(s) from
+ * the pair conversation, so the recipient's inbox no longer offers Accept/Decline.
+ */
+export async function withdrawOutgoingRequest(userid: string, contactid: string): Promise<void> {
+  const db = getDb();
+  if (!db) throw new EngineError("db_unavailable", 503);
+  const [row] = await db.select().from(contacts).where(eq(contacts.id, contactid)).limit(1);
+  if (!row) throw new EngineError("contact_not_found", 404);
+  if (row.requesterid !== userid) throw new EngineError("forbidden", 403);
+  if (row.status !== "pending") throw new EngineError("already_responded", 409);
+  if (row.conversationid) {
+    await db
+      .delete(messages)
+      .where(and(eq(messages.conversationid, row.conversationid), eq(messages.authorid, CONTACT_SYSTEM_AUTHOR)));
+  }
+  await db.delete(contacts).where(and(eq(contacts.id, contactid), eq(contacts.status, "pending")));
+}
+
+/** Cancel the caller's own unconsumed email invite (FR-008); a consumed invite is already a contact. */
+export async function cancelInvite(userid: string, inviteid: string): Promise<void> {
+  const db = getDb();
+  if (!db) throw new EngineError("db_unavailable", 503);
+  const [inv] = await db.select().from(contactinvites).where(eq(contactinvites.id, inviteid)).limit(1);
+  if (!inv) throw new EngineError("invite_not_found", 404);
+  if (inv.inviterid !== userid) throw new EngineError("forbidden", 403);
+  if (inv.consumedat) throw new EngineError("already_used", 409);
+  await db.delete(contactinvites).where(and(eq(contactinvites.id, inviteid), isNull(contactinvites.consumedat)));
 }
 
 /** Invite a non-user by email to join + connect (or request directly if they exist). */

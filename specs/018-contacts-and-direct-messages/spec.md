@@ -35,7 +35,7 @@ The org directory (spec 001) lets coworkers DM each other because they share a C
 
 ## Scope Boundary
 
-**IN:** the contacts graph (`contacts` M2M, request/accept/decline, mutual on accept); contact requests delivered **as a private message** (opens the 1:1 conversation + system notice + Accept/Decline); accepted-only DM send-gating; ad-hoc **group** DMs from accepted contacts; people **search** by name/email; **email invite** for non-users (`contactinvites` + SES) with auto-connect on sign-up; entry points — a **Chats** surface (`/chats`, icon in the rail) with a `+` new-chat modal, **and** "Ask to connect" by clicking a person in any community. New code: `src/lib/contacts/service.ts`, `src/lib/db/contacts-schema.ts`, `src/components/chats/ChatsApp.tsx`, `src/app/(authenticated)/chats/*`, `src/app/api/contacts/*`, `src/app/api/chats/*`, `src/app/invite/contact/[token]/*`. New tables: `contacts`, `contactinvites`. Touches spec 001 `sendMessage` (the DM gate).
+**IN:** the contacts graph (`contacts` M2M, request/accept/decline, mutual on accept); contact requests delivered **as a private message** (opens the 1:1 conversation + system notice + Accept/Decline); accepted-only DM send-gating; ad-hoc **group** DMs from accepted contacts; people **search** by name/email; **email invite** for non-users (`contactinvites` + SES) with auto-connect on sign-up; entry points — a **Chats** surface (`/chats`, icon in the rail) with a `+` new-chat modal, **and** "Ask to connect" by clicking a person in any community; an **outgoing-pending list with withdraw/cancel** (FR-008 — the caller's sent requests + outstanding email invites, each retractable). New code: `src/lib/contacts/service.ts`, `src/lib/db/contacts-schema.ts`, `src/components/chats/ChatsApp.tsx`, `src/app/(authenticated)/chats/*`, `src/app/api/contacts/*` (incl. `[id]` DELETE + `invite/[id]` DELETE), `src/app/api/chats/*`, `src/app/invite/contact/[token]/*`. New tables: `contacts`, `contactinvites`. Touches spec 001 `sendMessage` (the DM gate).
 
 **OUT:** Company directory DMs (spec 001's directory-driven Person DM) and Communities (spec 017) — separate contexts; presence/typing internals (spec 003); E2E for DMs (deferred — see Open Questions); blocking/reporting/spam controls; contact groups/labels; bridging to external platforms.
 
@@ -47,7 +47,7 @@ Block/report/mute; contact organization (labels, favorites); read receipts beyon
 
 1. ~~**Invite binding**~~ — **RESOLVED 2026-07-01 (delta §3):** email invites are now **email-bound + verified-email-required + consume-first atomic** (see revised FR-006). Bearer-token semantics removed.
 2. **E2E for DMs** — the Individuals context is personal/cross-org and a natural candidate for E2E (spec 010), unlike communities. Deferred; not yet wired. NOTE: **escrow (at-rest, KMS-envelope, lawful-access — explicitly NOT E2E)** was designed in `PROPOSED-DELTA.md` §7 and is **deferred to a delta revision + Legal** (see Deferred below).
-3. **Outgoing-request visibility** — the sender's UI shows "waiting for accept" heuristically (conv is neither an accepted contact nor a group); a dedicated outgoing-pending list is not yet modeled.
+3. ~~**Outgoing-request visibility**~~ — **RESOLVED 2026-07-01 (FR-008):** the sender's Chats list now shows a dedicated **Pending** section (outgoing `pending` requests by addressee name + outstanding email invites by address), each **withdrawable/cancellable**. Withdraw retracts both sides.
 4. **Opposite-direction re-conversation (delta §2 OQ-D)** — a re-request reuses the pair's single conversation, so a repeat approach is visible in-thread to the addressee. Accepted for v1 (declined rows post no visible system message); revisit if the no-decline-disclosure guarantee is tightened.
 5. **Cross-node rate limits (delta §5/§10 OQ-S1)** — the in-memory limiter is per-node; the durable `contactfreezes` table is the real flood guard, but search-throttle and flood-trip *detection* multiply by node count until a shared store (Redis) lands. Tracked cross-cutting alongside the spec 011 limiter.
 
@@ -78,6 +78,15 @@ In `lib/engine/service.ts` `sendMessage`, a `person` conversation rejects a user
 
 ### FR-007 — Chats surface + entry points
 `/chats` (authenticated) renders `ChatsApp`: left rail = incoming **Requests** (Accept/Decline) + **Contacts** + **Group chats**; right = the active conversation reusing the engine message/WS stack (subscribe `conversation:{id}`, live `message.inbound/outbound`, gated composer). A **Chats** icon (MessageCircle) sits in the icon rail. The `+` opens the new-chat modal (search → Connect / Chat / multi-select group / email-invite). In `CommunitiesApp`, a message author's name is a button → "Ask to connect."
+
+### FR-008 — Outgoing pending visibility + withdraw — **NEW 2026-07-01 (resolves OQ #3)**
+The Chats contacts list shows the caller's **outgoing pending** connections in a dedicated **Pending** section, alongside (not mixed into) accepted Contacts:
+- an outgoing `pending` `contacts` row (a request the caller sent) — shown by the **addressee's name**;
+- an unconsumed, unexpired `contactinvites` row (an email invite to a non-user) — shown by the **invited email**.
+
+A pending entry resolves three ways: **accept** → becomes an accepted contact and stays in the list (name retained); **decline** → drops off; **withdraw/cancel** (the caller removes it) → drops off.
+
+**Withdraw retracts both sides** (decided with user 2026-07-01). `withdrawOutgoingRequest(userid, contactid)` — **requester-only**, **`pending`-only** (a responded/terminal `accepted`/`declined` row cannot be withdrawn; consistent with FR-018-2.1 immutability, which governs *responded* rows) — deletes the pending row **and** the "wants to connect" system message(s) from the pair conversation, so the recipient's inbox no longer offers Accept/Decline for a request that was taken back. `cancelInvite(userid, inviteid)` deletes the caller's own **unconsumed** invite (a consumed invite is already an accepted contact and is rejected). New service `listOutgoing(userid)`; new routes `DELETE /api/contacts/[id]` (withdraw request) and `DELETE /api/contacts/invite/[id]` (cancel invite); `GET /api/contacts` returns `outgoing`. `ChatsApp` renders the **Pending** section with a Withdraw/Cancel (✕) control. This is a safe fix (no encryption/monitoring/block-unfriend surface) — added to this delta, no Legal gate.
 
 ## Delta — Approved 2026-07-01 (Safe Fixes)
 

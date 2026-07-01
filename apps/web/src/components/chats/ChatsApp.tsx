@@ -8,6 +8,9 @@ type Message = { id: string; authorid: string; authorname?: string | null; conte
 type UserLite = { id: string; displayname: string; email: string };
 type Contact = UserLite & { conversationid: string | null };
 type Request = { contactid: string; conversationid: string | null; from: UserLite };
+type Outgoing =
+  | { kind: "request"; contactid: string; conversationid: string | null; to: UserLite }
+  | { kind: "invite"; inviteid: string; email: string };
 
 const SYSTEM_AUTHOR = "yappchat-contact";
 
@@ -24,6 +27,7 @@ function Inner() {
   const [me, setMe] = useState<string>("");
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [requests, setRequests] = useState<Request[]>([]);
+  const [outgoing, setOutgoing] = useState<Outgoing[]>([]);
   const [groups, setGroups] = useState<Array<{ conversationid: string; title: string }>>([]);
 
   const [activeConv, setActiveConv] = useState<string | null>(null);
@@ -43,7 +47,7 @@ function Inner() {
       email_unverified: "Verify your email address before accepting a contact invite.",
       already_used: "That invite has already been used.",
       expired: "That invite link has expired — ask them to send a new one.",
-      self_invite: "You can't accept your own invite.",
+      self_invite: "That invite is for someone else — you're signed in as the account that sent it. Open the link in a signed-out (incognito) window and sign in as the invited address to accept.",
       not_found: "That invite link is invalid.",
     };
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot banner from the accept redirect
@@ -57,10 +61,11 @@ function Inner() {
       fetch("/api/chats", { credentials: "include" }),
     ]);
     if (cr.ok) {
-      const d = (await cr.json()) as { me: string; contacts: Contact[]; requests: Request[] };
+      const d = (await cr.json()) as { me: string; contacts: Contact[]; requests: Request[]; outgoing?: Outgoing[] };
       setMe(d.me);
       setContacts(d.contacts);
       setRequests(d.requests);
+      setOutgoing(d.outgoing ?? []);
     }
     if (chr.ok) {
       const d = (await chr.json()) as { chats: Array<{ conversationid: string; kind: string; title: string }> };
@@ -125,6 +130,18 @@ function Inner() {
     await loadContacts();
   }
 
+  // Withdraw a sent request / cancel an email invite (FR-008); retracts it from the recipient too.
+  async function withdraw(o: Outgoing) {
+    const url = o.kind === "request" ? `/api/contacts/${o.contactid}` : `/api/contacts/invite/${o.inviteid}`;
+    await fetch(url, { method: "DELETE", credentials: "include" });
+    if (o.kind === "request" && o.conversationid && o.conversationid === convRef.current) {
+      ws.unsubscribe(scopes.conversation(o.conversationid));
+      convRef.current = null;
+      setActiveConv(null);
+    }
+    await loadContacts();
+  }
+
   return (
     <div className="flex min-h-[72vh] flex-col gap-3">
       {inviteNotice && (
@@ -162,6 +179,36 @@ function Inner() {
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+          {outgoing.length > 0 && (
+            <div className="mb-2">
+              <p className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pending</p>
+              {outgoing.map((o) => {
+                const name = o.kind === "request" ? label(o.to) : o.email;
+                const key = o.kind === "request" ? o.contactid : o.inviteid;
+                const conv = o.kind === "request" ? o.conversationid : null;
+                return (
+                  <div key={key} className="flex items-center gap-1 rounded-lg p-2 hover:bg-muted">
+                    <button
+                      onClick={() => conv && openConversation(conv, name)}
+                      disabled={!conv}
+                      className={`min-w-0 flex-1 text-left ${activeConv && activeConv === conv ? "font-semibold" : ""}`}
+                    >
+                      <p className="truncate text-sm font-medium text-foreground">{name}</p>
+                      <p className="truncate text-xs text-muted-foreground">{o.kind === "invite" ? "invited — pending" : "pending"}</p>
+                    </button>
+                    <button
+                      onClick={() => withdraw(o)}
+                      className={`${ghost} h-7 px-2 text-xs`}
+                      title={o.kind === "invite" ? "Cancel invite" : "Withdraw request"}
+                      aria-label={o.kind === "invite" ? "Cancel invite" : "Withdraw request"}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           )}
           <p className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Contacts</p>

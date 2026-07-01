@@ -378,6 +378,11 @@ export async function signup(
     ? input.orgname!.trim()
     : `${input.displayname.trim()}'s Workspace`;
 
+  // DEV-ONLY: skip email verification so local test signups connect immediately.
+  // Hard-gated — requires the explicit flag AND a non-production build, so it can
+  // never take effect on the deployed (production) site even if the env var leaks.
+  const autoVerify = process.env.DEV_AUTO_VERIFY_EMAIL === "true" && process.env.NODE_ENV !== "production";
+
   try {
     await db.transaction(async (tx) => {
       await tx.insert(users).values({
@@ -386,6 +391,7 @@ export async function signup(
         displayname: input.displayname.trim(),
         passwordhash,
         plan: input.plan,
+        emailverifiedat: autoVerify ? new Date() : undefined,
       });
       await tx.insert(orgs).values({
         id: orgId,
@@ -407,7 +413,7 @@ export async function signup(
   }
 
   await issueSession(userId);
-  await sendVerificationEmail(userId, email);
+  if (!autoVerify) await sendVerificationEmail(userId, email);
   await writeAudit({ eventtype: "signup", userid: userId, ip: ctx.ip, payload: { plan: input.plan } });
 
   const [row] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
