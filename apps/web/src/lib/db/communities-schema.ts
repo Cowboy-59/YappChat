@@ -133,13 +133,19 @@ export const communityinvites = ycSchema.table(
     communityid: uuid("communityid")
       .notNull()
       .references(() => communities.id, { onDelete: "cascade" }),
+    // NULL = community-wide invite (FR-004); set = per-space invite (FR-020) that
+    // admits the redeemer directly into this space, overriding its strict policy.
+    spaceid: uuid("spaceid").references(() => spaces.id, { onDelete: "cascade" }),
     tokenhash: text("tokenhash").notNull(), // sha-256 of the invite token; plaintext shown once
     createdby: uuid("createdby").notNull(),
     expiresat: timestamp("expiresat", { withTimezone: true }).notNull(),
     usedat: timestamp("usedat", { withTimezone: true }),
     createdat: timestamp("createdat", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("communityinvites_tokenhash_key").on(t.tokenhash)],
+  (t) => [
+    uniqueIndex("communityinvites_tokenhash_key").on(t.tokenhash),
+    index("communityinvites_spaceid_idx").on(t.spaceid),
+  ],
 );
 
 export const communityauditlog = ycSchema.table(

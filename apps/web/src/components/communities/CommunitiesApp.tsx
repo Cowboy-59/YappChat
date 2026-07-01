@@ -314,20 +314,25 @@ function ManagePanel({
         <button className={ghost} onClick={generateInvite}>
           Generate invite link
         </button>
-        {invite && (
-          <div className="space-y-1 rounded-lg border border-border p-2">
-            <input readOnly className={field} value={invite.token} onFocus={(e) => e.currentTarget.select()} />
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span>Single-use · expires {new Date(invite.expiresat).toLocaleString()}</span>
-              <button
-                className="font-semibold text-primary hover:underline"
-                onClick={() => navigator.clipboard?.writeText(invite.token).catch(() => {})}
-              >
-                Copy
-              </button>
-            </div>
-          </div>
-        )}
+        {invite &&
+          (() => {
+            // FR-020 — hand out the full clickable URL (redeems at /communities/join), not a bare token.
+            const url = `${typeof window !== "undefined" ? window.location.origin : ""}/communities/join?token=${encodeURIComponent(invite.token)}`;
+            return (
+              <div className="space-y-1 rounded-lg border border-border p-2">
+                <input readOnly className={field} value={url} onFocus={(e) => e.currentTarget.select()} />
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>Single-use · expires {new Date(invite.expiresat).toLocaleString()}</span>
+                  <button
+                    className="font-semibold text-primary hover:underline"
+                    onClick={() => navigator.clipboard?.writeText(url).catch(() => {})}
+                  >
+                    Copy
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
       </section>
 
       {/* Spaces — create/edit/remove, set per-space entry policy + admin spaces */}

@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { uuidv7 } from "uuidv7";
 import { getDb } from "../db/client";
 import {
@@ -198,6 +198,149 @@ export async function createInvite(
   await db.insert(communityinvites).values({ id: uuidv7(), communityid, tokenhash: hashToken(token), createdby, expiresat });
   await audit(db, communityid, createdby, "invite_created", { expiresat: expiresat.toISOString() });
   return { token, expiresat };
+}
+
+/**
+ * Spec 017 FR-020 — create a single-use, expiring PER-SPACE invite. Verifies the
+ * space belongs to the community; returns the plaintext token ONCE. Redeeming it
+ * admits the recipient directly into this space, overriding its strict policy.
+ */
+export async function createSpaceInvite(
+  communityid: string,
+  spaceid: string,
+  createdby: string,
+  ttlHours = 72,
+): Promise<{ token: string; expiresat: Date }> {
+  const db = getDb();
+  if (!db) throw new EngineError("db_unavailable", 503);
+  const [space] = await db
+    .select({ id: spaces.id })
+    .from(spaces)
+    .where(and(eq(spaces.id, spaceid), eq(spaces.communityid, communityid)))
+    .limit(1);
+  if (!space) throw new EngineError("space_not_found", 404);
+  const token = randomBytes(24).toString("base64url");
+  const expiresat = new Date(Date.now() + ttlHours * 3_600_000);
+  await db.insert(communityinvites).values({ id: uuidv7(), communityid, spaceid, tokenhash: hashToken(token), createdby, expiresat });
+  await audit(db, communityid, createdby, "space_invite_created", { spaceid, expiresat: expiresat.toISOString() });
+  return { token, expiresat };
+}
+
+export type InvitePreview = {
+  kind: "community" | "space";
+  communityid: string;
+  communityname: string;
+  spaceid: string | null;
+  spacename: string | null;
+  expiresat: Date;
+  valid: boolean; // unused && unexpired
+};
+
+/**
+ * Spec 017 FR-020 — token-first preview. Resolves the community + (optional) space
+ * name and validity WITHOUT consuming the invite. Returns null for an unknown
+ * token (do not leak whether a hash exists). Names are returned even when invalid
+ * so the landing page can say "this invite has expired / was already used".
+ */
+export async function resolveInvite(token: string): Promise<InvitePreview | null> {
+  const db = getDb();
+  if (!db) return null;
+  const [row] = await db
+    .select({
+      communityid: communityinvites.communityid,
+      spaceid: communityinvites.spaceid,
+      usedat: communityinvites.usedat,
+      expiresat: communityinvites.expiresat,
+      communityname: communities.name,
+      spacename: spaces.name,
+    })
+    .from(communityinvites)
+    .innerJoin(communities, eq(communities.id, communityinvites.communityid))
+    .leftJoin(spaces, eq(spaces.id, communityinvites.spaceid))
+    .where(eq(communityinvites.tokenhash, hashToken(token)))
+    .limit(1);
+  if (!row) return null;
+  return {
+    kind: row.spaceid ? "space" : "community",
+    communityid: row.communityid,
+    communityname: row.communityname,
+    spaceid: row.spaceid,
+    spacename: row.spacename ?? null,
+    expiresat: row.expiresat,
+    valid: row.usedat == null && row.expiresat > new Date(),
+  };
+}
+
+export type RedeemResult = {
+  communityid: string;
+  communityslug: string;
+  spaceid: string | null;
+  conversationid: string | null; // the space conversation to route into, if any
+};
+
+/**
+ * Spec 017 FR-020 — consume an invite. Single-use + concurrency-safe (a guarded
+ * `WHERE usedat IS NULL` update, so only the first redeemer wins). Joins the
+ * community if needed (silently, as `member`), then for a space invite adds the
+ * user to that space's conversation UNCONDITIONALLY — overriding the space's
+ * adminonly/corponly/stricter policy. The invite is the grant.
+ */
+export async function redeemInvite(token: string, userid: string): Promise<RedeemResult> {
+  const db = getDb();
+  if (!db) throw new EngineError("db_unavailable", 503);
+  const [invite] = await db
+    .select({
+      id: communityinvites.id,
+      communityid: communityinvites.communityid,
+      spaceid: communityinvites.spaceid,
+      usedat: communityinvites.usedat,
+      expiresat: communityinvites.expiresat,
+    })
+    .from(communityinvites)
+    .where(eq(communityinvites.tokenhash, hashToken(token)))
+    .limit(1);
+  if (!invite) throw new EngineError("invalid_invite", 404);
+  if (invite.usedat != null) throw new EngineError("invite_used", 409);
+  if (invite.expiresat <= new Date()) throw new EngineError("invite_expired", 410);
+
+  const [community] = await db
+    .select({ slug: communities.slug })
+    .from(communities)
+    .where(eq(communities.id, invite.communityid))
+    .limit(1);
+  if (!community) throw new EngineError("community_not_found", 404);
+
+  // Resolve the invited space's conversation up front (before consuming).
+  let conversationid: string | null = null;
+  if (invite.spaceid) {
+    const [space] = await db
+      .select({ conversationid: spaces.conversationid })
+      .from(spaces)
+      .where(eq(spaces.id, invite.spaceid))
+      .limit(1);
+    if (!space) throw new EngineError("space_not_found", 404);
+    conversationid = space.conversationid;
+  }
+
+  // Consume FIRST — guarded so a concurrent double-redeem can't both win.
+  const consumed = await db
+    .update(communityinvites)
+    .set({ usedat: new Date() })
+    .where(and(eq(communityinvites.id, invite.id), isNull(communityinvites.usedat)))
+    .returning({ id: communityinvites.id });
+  if (consumed.length === 0) throw new EngineError("invite_used", 409);
+
+  // Join the community if needed (this syncs the normal, non-strict spaces).
+  if (!(await isMember(db, invite.communityid, userid))) {
+    await addMember(db, invite.communityid, userid, "member");
+  }
+  // Admit to the invited space directly — the override (idempotent if already in).
+  if (conversationid) await addConversationMember({ conversationid, userid });
+
+  await audit(db, invite.communityid, userid, invite.spaceid ? "space_invite_redeemed" : "invite_redeemed", {
+    spaceid: invite.spaceid,
+  });
+  return { communityid: invite.communityid, communityslug: community.slug, spaceid: invite.spaceid, conversationid };
 }
 
 export async function listJoinRequests(communityid: string, status: "pending" | "approved" | "denied" = "pending"): Promise<JoinRequestRow[]> {

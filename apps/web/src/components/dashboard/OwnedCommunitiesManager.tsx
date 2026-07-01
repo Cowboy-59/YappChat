@@ -355,6 +355,9 @@ function SpaceRow({
         </label>
         {/* Use AI in this space — enable/configure on edit (FR-019). */}
         <SpaceAiEditor communityId={communityId} spaceId={space.id} />
+        {/* Per-space invite link (FR-020) — admits the clicker directly into this
+            space, overriding its entry policy. */}
+        <SpaceInviteButton communityId={communityId} spaceId={space.id} />
         <div className="flex items-center gap-2">
           <button onClick={save} disabled={busy} className={primary}>
             {busy ? "…" : "Save"}
@@ -410,6 +413,55 @@ function SpaceRow({
             <Trash2 className="h-3.5 w-3.5" />
           </button>
         </>
+      )}
+    </div>
+  );
+}
+
+/** Spec 017 FR-020 — mint a shareable single-use link that admits the clicker
+ *  directly into THIS space (overriding its strict policy). Shows the full
+ *  clickable URL (not a bare token) so it can be dropped straight into a chat. */
+function SpaceInviteButton({ communityId, spaceId }: { communityId: string; spaceId: string }) {
+  const [link, setLink] = useState<{ url: string; expiresat: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  async function generate() {
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/communities/${communityId}/spaces/${spaceId}/invites`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ ttlHours: 72 }),
+      });
+      if (r.ok) {
+        const { invite } = await r.json();
+        setLink({ url: `${window.location.origin}/communities/join?token=${encodeURIComponent(invite.token)}`, expiresat: invite.expiresat });
+        setCopied(false);
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="space-y-1">
+      <button type="button" onClick={generate} disabled={busy} className={ghost}>
+        {busy ? "…" : "Generate invite link"}
+      </button>
+      {link && (
+        <div className="space-y-1 rounded-lg border border-border p-2">
+          <input readOnly className={field} value={link.url} onFocus={(e) => e.currentTarget.select()} />
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>Single-use · expires {new Date(link.expiresat).toLocaleString()}</span>
+            <button
+              type="button"
+              className="font-semibold text-primary hover:underline"
+              onClick={() => navigator.clipboard?.writeText(link.url).then(() => setCopied(true)).catch(() => {})}
+            >
+              {copied ? "Copied" : "Copy"}
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

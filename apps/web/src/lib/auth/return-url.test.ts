@@ -50,6 +50,14 @@ describe("isAllowedReturnPath — allowed", () => {
   it("allows an encoded but in-scope path", () => {
     expect(isAllowedReturnPath("%2Fapp%2Finbox", REGULAR)).toBe(true);
   });
+
+  it("allows the FR-020 invite landing path WITH its token query (encoded + decoded)", () => {
+    // The invite redirect round-trips `/communities/join?token=…` through sign-in;
+    // the allow-list must accept it, or per-space invite redemption breaks.
+    expect(isAllowedReturnPath("/communities/join?token=abc123", REGULAR)).toBe(true);
+    expect(isAllowedReturnPath(encodeURIComponent("/communities/join?token=abc123"), REGULAR)).toBe(true);
+    expect(resolveReturnPath("/communities/join?token=abc123", REGULAR)).toBe("/communities/join?token=abc123");
+  });
 });
 
 describe("isAllowedReturnPath — attack matrix (all rejected)", () => {
