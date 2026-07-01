@@ -42,7 +42,7 @@ export function GifPicker({ onPick, onClose }: { onPick: (url: string) => void; 
   }, [q]);
 
   return (
-    <div className="absolute bottom-12 left-3 z-10 flex h-80 w-80 flex-col rounded-xl border border-border bg-card p-2 shadow-lg">
+    <div className="absolute bottom-12 left-3 z-10 flex h-96 w-96 flex-col rounded-xl border border-border bg-card p-2 shadow-lg">
       <div className="mb-2 flex items-center gap-2">
         <input
           autoFocus
@@ -56,7 +56,7 @@ export function GifPicker({ onPick, onClose }: { onPick: (url: string) => void; 
         </button>
       </div>
       {note && <p className="px-1 py-2 text-xs text-muted-foreground">{note}</p>}
-      <div className="grid flex-1 grid-cols-2 gap-1.5 overflow-y-auto">
+      <div className="grid flex-1 grid-cols-2 gap-2 overflow-y-auto">
         {results.map((g) => (
           <button
             key={g.id}
@@ -66,7 +66,7 @@ export function GifPicker({ onPick, onClose }: { onPick: (url: string) => void; 
             className="overflow-hidden rounded-lg border border-border hover:opacity-80"
           >
             {/* eslint-disable-next-line @next/next/no-img-element -- remote Giphy preview thumbnail */}
-            <img src={g.preview} alt={g.title} className="h-24 w-full object-cover" loading="lazy" />
+            <img src={g.preview} alt={g.title} className="h-32 w-full object-cover" loading="lazy" />
           </button>
         ))}
         {!loading && !note && results.length === 0 && <p className="col-span-2 px-1 py-2 text-xs text-muted-foreground">No GIFs found.</p>}

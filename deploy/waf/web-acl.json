@@ -1,0 +1,47 @@
+{
+  "Name": "yappchat-web-waf",
+  "Scope": "REGIONAL",
+  "Description": "Baseline edge protection for the shared ECS Express gateway ALB - managed low-false-positive rules plus a per-IP rate limit that EXEMPTS the WebSocket ticket path /api/ws/token so the rate limit can never throttle live chat. See DEPLOY-WEB.md.",
+  "DefaultAction": { "Allow": {} },
+  "VisibilityConfig": { "SampledRequestsEnabled": true, "CloudWatchMetricsEnabled": true, "MetricName": "yappchatWebWaf" },
+  "Rules": [
+    {
+      "Name": "AWS-AmazonIpReputationList",
+      "Priority": 1,
+      "OverrideAction": { "None": {} },
+      "Statement": { "ManagedRuleGroupStatement": { "VendorName": "AWS", "Name": "AWSManagedRulesAmazonIpReputationList" } },
+      "VisibilityConfig": { "SampledRequestsEnabled": true, "CloudWatchMetricsEnabled": true, "MetricName": "AmazonIpReputationList" }
+    },
+    {
+      "Name": "AWS-KnownBadInputs",
+      "Priority": 2,
+      "OverrideAction": { "None": {} },
+      "Statement": { "ManagedRuleGroupStatement": { "VendorName": "AWS", "Name": "AWSManagedRulesKnownBadInputsRuleSet" } },
+      "VisibilityConfig": { "SampledRequestsEnabled": true, "CloudWatchMetricsEnabled": true, "MetricName": "KnownBadInputs" }
+    },
+    {
+      "Name": "RateLimitPerIP",
+      "Priority": 3,
+      "Action": { "Block": {} },
+      "Statement": {
+        "RateBasedStatement": {
+          "Limit": 10000,
+          "AggregateKeyType": "IP",
+          "ScopeDownStatement": {
+            "NotStatement": {
+              "Statement": {
+                "ByteMatchStatement": {
+                  "SearchString": "/api/ws/token",
+                  "FieldToMatch": { "UriPath": {} },
+                  "TextTransformations": [ { "Priority": 0, "Type": "NONE" } ],
+                  "PositionalConstraint": "STARTS_WITH"
+                }
+              }
+            }
+          }
+        }
+      },
+      "VisibilityConfig": { "SampledRequestsEnabled": true, "CloudWatchMetricsEnabled": true, "MetricName": "RateLimitPerIP" }
+    }
+  ]
+}

@@ -77,6 +77,29 @@ The DB is shared with the WS engine and already at migration **0020**. Apply any
 migrations out-of-band before/at deploy: `node scripts/db-migrate.mjs` (idempotent,
 records in `yappchat.__migrations`). The image does **not** run migrations on boot.
 
+## 8. Edge protection (WAF)
+
+The shared ECS Express **gateway ALB** (it fronts BOTH this app and the WS engine)
+sits behind a WAFv2 Web ACL `yappchat-web-waf`: AWS-managed low-false-positive
+rules + a per-IP rate limit. **The rate limit EXEMPTS `/api/ws/token`** so it can't
+throttle the WebSocket handshake (that exact mistake once silently broke live
+chat). It also keeps internet bot-scan 4XX low enough that CFN deploys don't trip
+the ECS deployment circuit-breaker's rollback alarm.
+
+The config is version-controlled in [`deploy/waf/web-acl.json`](../../deploy/waf/web-acl.json).
+It is intentionally **not** part of the service CloudFormation — the gateway ALB is
+shared and not owned by this stack, so the association lives in a small idempotent
+script instead. Apply / re-apply it after the first deploy and after any teardown
+that rotates the ALB:
+
+```bash
+AWS_PROFILE=Andy node deploy/waf/apply-waf.mjs
+```
+
+Verify: `curl https://www.yappchatt.com/.env` → **403** (WAF block); `…/api/ws/token`
+→ **401** (app auth, NOT 403). ⚠️ Any future WAF/edge rule on this ALB MUST keep the
+WS token + handshake paths exempt.
+
 ---
 
 ## Verification
