@@ -47,7 +47,9 @@
       "GIPHY_API_KEY": "arn:aws:ssm:<REGION>:<ACCOUNT_ID>:parameter/yappchat/web/GIPHY_API_KEY",
       "LIVEKIT_API_KEY": "arn:aws:ssm:<REGION>:<ACCOUNT_ID>:parameter/yappchat/web/LIVEKIT_API_KEY",
       "LIVEKIT_API_SECRET": "arn:aws:ssm:<REGION>:<ACCOUNT_ID>:parameter/yappchat/web/LIVEKIT_API_SECRET",
-      "GROQ_API_KEY": "arn:aws:ssm:<REGION>:<ACCOUNT_ID>:parameter/yappchat/web/GROQ_API_KEY"
+      "GROQ_API_KEY": "arn:aws:ssm:<REGION>:<ACCOUNT_ID>:parameter/yappchat/web/GROQ_API_KEY",
+      "LIVEKIT_S3_ACCESS_KEY": "arn:aws:ssm:<REGION>:<ACCOUNT_ID>:parameter/yappchat/web/LIVEKIT_S3_ACCESS_KEY",
+      "LIVEKIT_S3_SECRET": "arn:aws:ssm:<REGION>:<ACCOUNT_ID>:parameter/yappchat/web/LIVEKIT_S3_SECRET"
     }
   },
   "tags": {
