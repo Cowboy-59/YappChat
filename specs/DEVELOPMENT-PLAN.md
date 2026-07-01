@@ -1,6 +1,6 @@
 # YappChat — Development Plan
 
-**Last Updated:** 2026-06-30 · **Phase:** Implementation · **Snapshot date:** 2026-06-28 dashboard
+**Last Updated:** 2026-07-01 · **Phase:** Implementation · **Snapshot date:** 2026-07-01 dashboard
 
 > **This file is the editable source of truth.** Change any step below, then run
 > `pnpm devplan:pdf` (or `node scripts/build-devplan-pdf.mjs`) to regenerate
@@ -12,10 +12,10 @@
 
 ## ▶ START HERE
 
-- **Where I am:** Phase 1 — shipping the social slice (auth + communities + chat). Foundation (Phase 0) is mostly built.
-- **What's deployed:** Only the WS engine (ws.wxperts.com). `apps/web` is **not deployed yet** and is **untracked in git**.
-- **Single next action:** UI-smoke the 2026-06-27 work (AI-enabled space + sidebar badges + community CRUD), then **commit `apps/web`** and deploy the slice.
-- **Nearest blocker:** Spec **018 (Contacts & DMs) is unscoped** but sits on the Phase 1 path — run `buildscope`/`createspecs` for it before Phase 1 can fully close.
+- **Where I am:** Phase 1 — shipping the social slice (auth + communities + chat). Foundation (Phase 0) is mostly built. `apps/web` is now **committed** to git; 018 Contacts & DMs is scoped and its safe-fix delta is built.
+- **What's deployed:** Only the WS engine (ws.wxperts.com). `apps/web` is **not deployed yet** — deploying the Next app for the first time is the real Phase 1 exit gate.
+- **Single next action:** decide 017 launch-scope (ship-as-is vs add discovery/native-messaging), then **deploy the slice** (app domain, prod secrets, matching `WS_INTERNAL_SECRET`). A live 2-account e2e of 018 (connect→accept→DM→group→invite→freeze→unfreeze) is deferred but wanted before/at deploy.
+- **Nearest blocker:** the **app deploy** itself (nothing is scope-blocked now). Presentation (071, Phase 5) is intended to come *after* the slice is online.
 
 ---
 
@@ -24,7 +24,7 @@
 | Spec | Title | State | Remaining (high-level) |
 |------|-------|-------|------------------------|
 | 003 | WebSocket Engine | 🟡 ~88% | Capacity monitoring + RedisBroker (horizontal scale). |
-| 011 | Auth & Authorization | 🟡 ~50% | Magic-link, device registry, AuthGate/account UI. |
+| 011 | Auth & Authorization | 🟡 ~80% | Device sessions/agent tokens, AuthGate/account UI, SSO SOC-2 hardening done (06-30). Remaining: magic-link, Apple/GitHub SSO, `oauthproviderconfigs` table. |
 | 001 | Common Chat Engine | 🟡 ~22% | 23 external plugins, video, E2E, history/search. |
 | 002 | Personal Assistant | 🟡 ~40% | Monitoring loop, OAuth, subagents. Migrations 0003–0004 pending. |
 | 004 | Agent & Skill Studio | 🟡 ~50% | Sandbox runner, metrics, Archie assistant. Migration 0002 pending. |
@@ -38,7 +38,7 @@
 | 009 | Push Notifications | 🔴 0% | Not started. |
 | 010 | E2E Key Backup & Recovery | 🔴 0% | Not started. |
 | 013 | Admin Console | 🔴 0% | Not started (scoped). |
-| 018 | Contacts & Direct Messages | ⚪ 0% | **Not yet scoped.** |
+| 018 | Contacts & Direct Messages | 🟡 ~65% | Scoped + safe-fix delta built & committed (07-01): contacts graph rework, invite hardening, flood guard, group tx, search RL, admin freeze surface. Remaining: live e2e; **deferred to delta+Legal** — block/unfriend, @mention→PM, escrow encryption, illegal-activity monitoring. |
 | 071 | Presentation (LiveKit) | 🔴 0% | Not started (scoped). |
 
 Legend: 🟢 built · 🟡 partial · 🔴 not started · ⚪ not scoped.
@@ -66,7 +66,7 @@ flowchart TD
     S017[017 Communities]:::partial
     S068[068 App Shell]:::done
     S012[012 Landing Page]:::done
-    S018[018 Contacts and DMs]:::unscoped
+    S018[018 Contacts and DMs]:::partial
   end
   subgraph P2[Phase 2 - AI Layer]
     S002[002 Personal Assistant]:::partial
@@ -127,8 +127,8 @@ flowchart TD
 - [x] **012 Landing Page** — done & verified.
 - [x] **068 App Shell & Dashboard** — done & verified.
 - [~] **017 Communities** — spaces + join/invite/moderation + FR-019 support-AI done. Remaining for launch-quality: discovery/directory, native messaging, presence/typing.
-- [ ] **018 Contacts & DMs** — ⚠️ **scope this first** (`buildscope`/`createspecs`), then build the contacts graph + DM gating.
-- [ ] **Launch ops:** UI-smoke today's work → commit `apps/web` → Design→Implementation lifecycle transition → deploy (app domain, prod secrets: `DATABASE_URL`, SES, Google SSO, `SITE_URL`, matching `WS_INTERNAL_SECRET`).
+- [~] **018 Contacts & DMs** — scoped + **safe-fix delta built & committed (07-01):** contacts graph (immutable rows, derived-accepted, opposite-dir auto-accept, 24h decline purge), invite hardening (email-bound + verified + consume-first), flood guard (freeze + sysadmin unfreeze surface), group-chat tx, search rate-limit, engine-route + WS private-tier gates. Remaining: live 2-account e2e; heavy features (block/unfriend, @mention→PM, escrow, monitoring) **deferred to a delta revision + Legal**.
+- [ ] **Launch ops:** commit `apps/web` ✅ → Design→Implementation lifecycle transition → deploy (app domain, prod secrets: `DATABASE_URL`, SES, Google SSO, `SITE_URL`, matching `WS_INTERNAL_SECRET`).
 
 **Exit gate:** slice smoke-tested, committed, and deployed online.
 
