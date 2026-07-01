@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { SessionUser } from "@/lib/auth/shared";
 import { SUPPORTED_LANGUAGES } from "@/lib/account/languages";
 import { PRESET_AVATARS } from "@/lib/account/avatars";
+import { AvatarCropper } from "./AvatarCropper";
 
 const field = "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm";
 const label = "block text-xs font-semibold text-muted-foreground";
@@ -23,6 +24,7 @@ export function ProfilePanel({ user, avatarSrc }: { user: SessionUser; avatarSrc
   const [avatar, setAvatar] = useState<string | null>(avatarSrc);
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [avatarNote, setAvatarNote] = useState<string | null>(null);
+  const [cropFile, setCropFile] = useState<File | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
   async function save() {
@@ -47,11 +49,11 @@ export function ProfilePanel({ user, avatarSrc }: { user: SessionUser; avatarSrc
     }
   }
 
-  async function uploadAvatar(file: File) {
+  async function uploadAvatar(file: Blob) {
     setAvatarBusy(true);
     setAvatarNote(null);
     const body = new FormData();
-    body.append("file", file);
+    body.append("file", file, "avatar.jpg");
     const r = await fetch("/api/account/avatar", { method: "POST", credentials: "include", body });
     setAvatarBusy(false);
     if (r.ok) {
@@ -141,12 +143,22 @@ export function ProfilePanel({ user, avatarSrc }: { user: SessionUser; avatarSrc
               className="hidden"
               onChange={(e) => {
                 const f = e.target.files?.[0];
-                if (f) void uploadAvatar(f);
+                if (f) setCropFile(f); // open the cropper before uploading
                 e.target.value = ""; // allow re-selecting the same file
               }}
             />
           </div>
         </div>
+        {cropFile && (
+          <AvatarCropper
+            file={cropFile}
+            onCancel={() => setCropFile(null)}
+            onCropped={(blob) => {
+              setCropFile(null);
+              void uploadAvatar(blob);
+            }}
+          />
+        )}
         <div className="flex flex-wrap gap-2 pt-1">
           <span className="sr-only">Or choose a preset avatar</span>
           {PRESET_AVATARS.map((p) => (
