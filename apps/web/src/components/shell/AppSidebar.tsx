@@ -138,8 +138,8 @@ export function AppSidebar() {
               icon={Users}
               open={isOpen("sec:communities")}
               onToggle={() => toggleNode("sec:communities")}
-              addHref="/communities?new=community"
-              addTitle="New community"
+              addHref="/communities?discover=1"
+              addTitle="Browse or create a community"
               active={pathname.startsWith("/communities")}
             />
             {isOpen("sec:communities") && (

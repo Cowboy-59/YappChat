@@ -152,7 +152,7 @@ function CreateCommunityForm({
   onCancel: () => void;
 }) {
   const [name, setName] = useState("");
-  const [discoverability, setDiscoverability] = useState<Discoverability>("unlisted");
+  const [discoverability, setDiscoverability] = useState<Discoverability>("public");
   const [joinpolicy, setJoinpolicy] = useState<JoinPolicy>("approval");
   return (
     <div className="mb-3 space-y-2 rounded-lg border border-border bg-muted/40 p-2">
@@ -395,8 +395,8 @@ type Discoverable = {
   requested: boolean;
 };
 
-/** Public community discovery: live search + join/request per policy. */
-function DiscoverPanel({ onJoined }: { onJoined: () => void }) {
+/** Public community discovery: live search + join/request per policy + create. */
+function DiscoverPanel({ onJoined, onCreate }: { onJoined: () => void; onCreate: () => void }) {
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Discoverable[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
@@ -434,14 +434,17 @@ function DiscoverPanel({ onJoined }: { onJoined: () => void }) {
 
   return (
     <div className="flex flex-1 flex-col">
-      <div className="border-b border-border px-4 py-2.5">
+      <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
         <input
           autoFocus
-          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+          className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm"
           placeholder="Search public communities…"
           value={q}
           onChange={(e) => onChange(e.target.value)}
         />
+        <button onClick={onCreate} className={`${primary} shrink-0 whitespace-nowrap`} title="Create your own community">
+          + Add your own
+        </button>
       </div>
       <div className="flex-1 space-y-2 overflow-y-auto p-4">
         {results.map((c) => (
@@ -554,6 +557,7 @@ function Inner({ currentUserId }: { currentUserId: string }) {
   const pC = params.get("c");
   const pSpace = params.get("space");
   const pNew = params.get("new");
+  const pDiscover = params.get("discover");
 
   // Select the community named by ?c once its row is loaded.
   useEffect(() => {
@@ -577,6 +581,12 @@ function Inner({ currentUserId }: { currentUserId: string }) {
     if (pNew === "community") setCreating(true);
     else if (pNew === "space") setCreatingSpace(true);
   }, [pNew]);
+
+  // The Communities "＋" opens Discover (browse everything, with a create button).
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mirror URL intent into local UI state
+    if (pDiscover) { setManaging(false); setDiscovering(true); }
+  }, [pDiscover]);
 
   /** Drop transient ?new=… params after a create form closes. */
   const clearNew = useCallback(() => {
@@ -772,6 +782,10 @@ function Inner({ currentUserId }: { currentUserId: string }) {
               onJoined={() => {
                 void loadCommunities();
                 window.dispatchEvent(new CustomEvent("nav:refresh"));
+              }}
+              onCreate={() => {
+                setDiscovering(false);
+                setCreating(true);
               }}
             />
           </>
