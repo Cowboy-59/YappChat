@@ -1,0 +1,39 @@
+{
+  "name": "websocket",
+  "description": "YappChat WebSocket engine (spec 003) — ws.wxperts.com, shared realtime infra",
+  "region": "us-east-2",
+  "build": {
+    "context": "apps/web",
+    "dockerfile": "Dockerfile.ws"
+  },
+  "ecr": {
+    "repository": "yappchat-ws"
+  },
+  "express": {
+    "stackName": "yappchat-ws",
+    "serviceName": "yappchat-ws",
+    "cpu": "256",
+    "memory": "512",
+    "containerPort": 3001,
+    "healthCheckPath": "/health",
+    "minTaskCount": 1,
+    "maxTaskCount": 1,
+    "executionRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/yappchat-ecs-execution",
+    "infrastructureRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/yappchat-ecs-infrastructure",
+    "env": {
+      "WS_PORT": "3001",
+      "WS_MAX_CONNECTIONS": "1000",
+      "WS_BROKER": "local",
+      "NODE_ENV": "production"
+    },
+    "secrets": {
+      "DATABASE_URL": "arn:aws:ssm:<REGION>:<ACCOUNT_ID>:parameter/yappchat/ws/DATABASE_URL",
+      "WS_INTERNAL_SECRET": "arn:aws:ssm:<REGION>:<ACCOUNT_ID>:parameter/yappchat/ws/WS_INTERNAL_SECRET"
+    }
+  },
+  "tags": {
+    "project": "yappchat",
+    "component": "websocket-engine",
+    "spec": "003"
+  }
+}

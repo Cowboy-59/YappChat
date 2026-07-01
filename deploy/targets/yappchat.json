@@ -1,0 +1,48 @@
+{
+  "name": "yappchat",
+  "description": "YappChat web app (Next.js 16) — www.yappchatt.com, the social slice (auth + communities + chat + DMs)",
+  "region": "us-east-2",
+  "build": {
+    "context": "apps/web",
+    "dockerfile": "Dockerfile",
+    "args": {
+      "NEXT_PUBLIC_SITE_URL": "https://www.yappchatt.com",
+      "NEXT_PUBLIC_WS_URL": "wss://ws.wxperts.com",
+      "NEXT_PUBLIC_APP_VERSION": "0.1.0"
+    }
+  },
+  "ecr": {
+    "repository": "yappchat-web"
+  },
+  "express": {
+    "stackName": "yappchat-web",
+    "serviceName": "yappchat-web",
+    "cpu": "512",
+    "memory": "1024",
+    "containerPort": 3000,
+    "healthCheckPath": "/api/health",
+    "minTaskCount": 1,
+    "maxTaskCount": 4,
+    "executionRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/yappchat-ecs-execution",
+    "infrastructureRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/yappchat-ecs-infrastructure",
+    "env": {
+      "NODE_ENV": "production",
+      "PORT": "3000",
+      "SITE_URL": "https://www.yappchatt.com",
+      "SES_REGION": "us-east-1",
+      "EMAIL_FROM": "YappChat <admin@wxperts.com>",
+      "WS_INTERNAL_URL": "http://<WS_INTERNAL_HOST>:3001"
+    },
+    "secrets": {
+      "DATABASE_URL": "arn:aws:ssm:<REGION>:<ACCOUNT_ID>:parameter/yappchat/web/DATABASE_URL",
+      "WS_INTERNAL_SECRET": "arn:aws:ssm:<REGION>:<ACCOUNT_ID>:parameter/yappchat/web/WS_INTERNAL_SECRET",
+      "GOOGLE_CLIENT_ID": "arn:aws:ssm:<REGION>:<ACCOUNT_ID>:parameter/yappchat/web/GOOGLE_CLIENT_ID",
+      "GOOGLE_CLIENT_SECRET": "arn:aws:ssm:<REGION>:<ACCOUNT_ID>:parameter/yappchat/web/GOOGLE_CLIENT_SECRET"
+    }
+  },
+  "tags": {
+    "project": "yappchat",
+    "component": "web-app",
+    "spec": "068"
+  }
+}

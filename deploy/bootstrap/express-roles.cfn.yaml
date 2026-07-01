@@ -1,0 +1,63 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  One-time bootstrap for `deploy` targets — the two IAM roles every ECS Express
+  Mode service needs in this account: a task execution role and the Express
+  infrastructure role. Reusable across all deploy targets (websocket, future
+  yappchat app, etc.). Idempotent: re-deploy to update.
+
+Parameters:
+  SecretParameterPrefix:
+    Type: String
+    Default: /yappchat/ws/
+    Description: SSM parameter path prefix the execution role may read (for ECS secrets injection).
+
+Resources:
+  # Trusts ecs-tasks; pulls images + writes logs + reads the SSM secrets that the
+  # service injects as container secrets (+ KMS decrypt for SecureString).
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: yappchat-ecs-execution
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: read-ssm-secrets
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [ssm:GetParameters, ssm:GetParameter]
+                Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SecretParameterPrefix}*"
+              - Effect: Allow
+                Action: kms:Decrypt
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    kms:ViaService: !Sub "ssm.${AWS::Region}.amazonaws.com"
+
+  # Trusts ecs; lets ECS Express provision the ALB, target groups, security
+  # groups, ACM certs, autoscaling, and CloudWatch alarms on your behalf.
+  InfrastructureRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: yappchat-ecs-infrastructure
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSInfrastructureRoleforExpressGatewayServices
+
+Outputs:
+  ExecutionRoleArn:
+    Value: !GetAtt ExecutionRole.Arn
+  InfrastructureRoleArn:
+    Value: !GetAtt InfrastructureRole.Arn
