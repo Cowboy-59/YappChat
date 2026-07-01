@@ -25,12 +25,15 @@
     "maxTaskCount": 4,
     "executionRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/yappchat-ecs-execution",
     "infrastructureRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/yappchat-ecs-infrastructure",
+    "taskRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/yappchat-ecs-task",
     "env": {
       "NODE_ENV": "production",
       "PORT": "3000",
       "SITE_URL": "https://www.yappchatt.com",
       "SES_REGION": "us-east-1",
       "EMAIL_FROM": "YappChat <admin@wxperts.com>",
+      "S3_BUCKET": "yappchat-chat-media-907693067083",
+      "AWS_REGION": "us-east-2",
       "WS_INTERNAL_URL": "https://ya-da8cd67514994597912a3f06fa776257.ecs.us-east-2.on.aws"
     },
     "secrets": {

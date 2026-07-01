@@ -6,6 +6,10 @@ Description: >
   yappchat app, etc.). Idempotent: re-deploy to update.
 
 Parameters:
+  ChatMediaBucket:
+    Type: String
+    Default: yappchat-chat-media-907693067083
+    Description: S3 bucket the app task role may read/write (avatars + chat media).
   SecretParameterPrefix:
     Type: String
     Default: /yappchat/
@@ -60,8 +64,38 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonECSInfrastructureRoleforExpressGatewayServices
 
+  # Trusts ecs-tasks; the RUNTIME identity the app container uses for AWS SDK
+  # calls (S3 chat media / avatars + SES email). Distinct from the execution role
+  # (which only pulls images/secrets/logs).
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: yappchat-ecs-task
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: app-runtime
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [s3:GetObject, s3:PutObject]
+                Resource: !Sub "arn:aws:s3:::${ChatMediaBucket}/*"
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !Sub "arn:aws:s3:::${ChatMediaBucket}"
+              - Effect: Allow
+                Action: [ses:SendEmail, ses:SendRawEmail]
+                Resource: "*"
+
 Outputs:
   ExecutionRoleArn:
     Value: !GetAtt ExecutionRole.Arn
   InfrastructureRoleArn:
     Value: !GetAtt InfrastructureRole.Arn
+  TaskRoleArn:
+    Value: !GetAtt TaskRole.Arn
