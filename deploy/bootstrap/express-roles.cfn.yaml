@@ -8,8 +8,12 @@ Description: >
 Parameters:
   SecretParameterPrefix:
     Type: String
-    Default: /yappchat/ws/
-    Description: SSM parameter path prefix the execution role may read (for ECS secrets injection).
+    Default: /yappchat/
+    Description: >
+      SSM parameter path prefix the (shared) execution role may read for ECS secrets
+      injection. Covers all yappchat services — /yappchat/ws/* (engine) and
+      /yappchat/web/* (web app). Widened from /yappchat/ws/ on 2026-07-01 when the
+      web app deploy needed its own secrets.
 
 Resources:
   # Trusts ecs-tasks; pulls images + writes logs + reads the SSM secrets that the

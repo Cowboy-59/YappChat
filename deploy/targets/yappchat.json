@@ -31,7 +31,7 @@
       "SITE_URL": "https://www.yappchatt.com",
       "SES_REGION": "us-east-1",
       "EMAIL_FROM": "YappChat <admin@wxperts.com>",
-      "WS_INTERNAL_URL": "http://<WS_INTERNAL_HOST>:3001"
+      "WS_INTERNAL_URL": "https://ya-da8cd67514994597912a3f06fa776257.ecs.us-east-2.on.aws"
     },
     "secrets": {
       "DATABASE_URL": "arn:aws:ssm:<REGION>:<ACCOUNT_ID>:parameter/yappchat/web/DATABASE_URL",
