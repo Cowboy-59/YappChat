@@ -9,6 +9,6 @@ export default async function ContactInvitePage({ params }: { params: Promise<{ 
   const { token } = await params;
   const user = await getSessionUser();
   if (!user) redirect(`/signup?return=${encodeURIComponent(`/invite/contact/${token}`)}`);
-  const r = await acceptContactInvite(token, user.id);
-  redirect(r.ok ? "/chats" : "/chats?invite=expired");
+  const r = await acceptContactInvite(token, { id: user.id, email: user.email, emailverified: user.emailverified });
+  redirect(r.ok ? "/chats" : `/chats?invite=${r.reason ?? "expired"}`);
 }

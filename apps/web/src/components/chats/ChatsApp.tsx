@@ -33,6 +33,23 @@ function Inner() {
   const convRef = useRef<string | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
+  const [inviteNotice, setInviteNotice] = useState("");
+
+  useEffect(() => {
+    const reason = new URLSearchParams(window.location.search).get("invite");
+    if (!reason) return;
+    const messages: Record<string, string> = {
+      email_mismatch: "That invite was sent to a different email address. Sign in with the invited address to accept it.",
+      email_unverified: "Verify your email address before accepting a contact invite.",
+      already_used: "That invite has already been used.",
+      expired: "That invite link has expired — ask them to send a new one.",
+      self_invite: "You can't accept your own invite.",
+      not_found: "That invite link is invalid.",
+    };
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot banner from the accept redirect
+    setInviteNotice(messages[reason] ?? "That invite couldn't be accepted.");
+    window.history.replaceState(null, "", window.location.pathname);
+  }, []);
 
   const loadContacts = useCallback(async () => {
     const [cr, chr] = await Promise.all([
@@ -109,7 +126,16 @@ function Inner() {
   }
 
   return (
-    <div className="flex min-h-[72vh] gap-4">
+    <div className="flex min-h-[72vh] flex-col gap-3">
+      {inviteNotice && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted px-4 py-2 text-sm text-foreground">
+          <span>{inviteNotice}</span>
+          <button onClick={() => setInviteNotice("")} className={`${ghost} h-7 px-2 text-xs`} aria-label="Dismiss">
+            Dismiss
+          </button>
+        </div>
+      )}
+      <div className="flex flex-1 gap-4">
       {/* Left: contacts + requests */}
       <aside className="flex w-72 shrink-0 flex-col rounded-xl border border-border bg-card">
         <div className="flex items-center justify-between border-b border-border p-3">
@@ -229,6 +255,7 @@ function Inner() {
           </>
         )}
       </section>
+      </div>
 
       {modalOpen && (
         <NewChatModal
@@ -274,10 +301,21 @@ function NewChatModal({
     }
     const t = setTimeout(async () => {
       const r = await fetch(`/api/contacts/search?q=${encodeURIComponent(q)}`, { credentials: "include" });
-      if (r.ok) setResults(((await r.json()) as { results: UserLite[] }).results.filter((u) => u.id !== me));
+      if (r.ok) {
+        setResults(((await r.json()) as { results: UserLite[] }).results.filter((u) => u.id !== me));
+      } else if (r.status === 429) {
+        setResults([]);
+        setNotice("You're searching too fast — please slow down for a moment.");
+      }
     }, 250);
     return () => clearTimeout(t);
   }, [q, me]);
+
+  async function requestError(r: Response): Promise<string> {
+    const d = (await r.json().catch(() => ({}))) as { error?: string; detail?: string };
+    if (r.status === 429) return d.detail || "You're doing that too fast — please slow down.";
+    return d.detail || "Couldn't send the request. Please try again.";
+  }
 
   async function connect(u: UserLite) {
     const r = await fetch("/api/contacts/request", {
@@ -289,6 +327,8 @@ function NewChatModal({
     if (r.ok) {
       setNotice(`Connect request sent to ${label(u)}.`);
       await onChanged();
+    } else {
+      setNotice(await requestError(r));
     }
   }
 
@@ -304,6 +344,8 @@ function NewChatModal({
       const d = (await r.json()) as { mode?: string };
       setNotice(d.mode === "requested" ? `Connect request sent to ${email}.` : `Invite emailed to ${email}.`);
       await onChanged();
+    } else {
+      setNotice(await requestError(r));
     }
   }
 
@@ -317,6 +359,8 @@ function NewChatModal({
     if (r.ok) {
       const d = (await r.json()) as { conversationid: string };
       onOpenChat(d.conversationid, selected.map(label).join(", "));
+    } else if (r.status === 429) {
+      setNotice(await requestError(r));
     } else {
       setNotice("Group members must be accepted contacts.");
     }

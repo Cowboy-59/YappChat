@@ -20,7 +20,11 @@ export type AuthEventType =
   | "oauth_link"
   | "oauth_unlink"
   | "agent_token_issue"
-  | "agent_token_revoke";
+  | "agent_token_revoke"
+  // Spec 018 delta §3/§5 — contacts flood guard + invite hardening.
+  | "contact_flood"
+  | "contact_unfreeze"
+  | "contact_invite_rejected";
 
 export async function writeAudit(params: {
   eventtype: AuthEventType;

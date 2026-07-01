@@ -263,7 +263,7 @@ export async function sendMessage(input: {
 
   const [row] = await db.select().from(messages).where(eq(messages.id, id)).limit(1);
   const msg = normalize(row, await resolveAuthorName(row.authorid), await presignAttachments(row.mediaurl));
-  await publishMessageEvent("message.outbound", channel.id, msg);
+  await publishMessageEvent("message.outbound", channel.id, msg, conversation.kind);
   return msg;
 }
 
@@ -300,7 +300,7 @@ export async function postSystemMessage(input: {
 
   const [row] = await db.select().from(messages).where(eq(messages.id, id)).limit(1);
   const msg = normalize(row, input.authorname ?? null);
-  await publishMessageEvent("message.outbound", conversation.channelid, msg);
+  await publishMessageEvent("message.outbound", conversation.channelid, msg, conversation.kind);
   return msg;
 }
 
@@ -314,10 +314,25 @@ async function publishMessageEvent(
   type: "message.inbound" | "message.outbound",
   channelid: string,
   msg: NormalizedMessage,
+  conversationKind?: string,
 ): Promise<void> {
-  await publishEvent({ type, scope: scopes.channel(channelid), payload: msg });
+  // Membership-checked per-conversation scope — the ONLY delivery path for private
+  // native conversations (person/group DMs, community spaces, support).
   if (msg.conversationid) {
     await publishEvent({ type, scope: scopes.conversation(msg.conversationid), payload: msg });
+  }
+  // SECURITY: the open `channel:` scope has NO per-user authz (server/ws.ts
+  // authorizes any signed-in subscriber) and all internal DMs share ONE channel,
+  // so mirroring a private conversation's message there would broadcast its
+  // plaintext to every user. Restrict the channel scope to legacy bridged channels
+  // (external platforms); private native kinds ride only the conversation scope.
+  const isPrivateNative =
+    conversationKind === "person" ||
+    conversationKind === "group" ||
+    conversationKind === "space" ||
+    conversationKind === "support";
+  if (!isPrivateNative) {
+    await publishEvent({ type, scope: scopes.channel(channelid), payload: msg });
   }
 }
 

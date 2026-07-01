@@ -1,0 +1,16 @@
+{
+  "specNumber": "018",
+  "featureName": "Contacts & Direct Messages",
+  "phase": "implementation",
+  "priority": "high",
+  "progress": {
+    "tasksTotal": 11,
+    "tasksCompleted": 8,
+    "percentage": 73
+  },
+  "timeline": {
+    "created": "2026-06-28T00:00:00.000Z",
+    "phaseStarted": "2026-06-28T00:00:00.000Z"
+  },
+  "note": "Retro-scoped: code built ahead of spec on 2026-06-28; this spec documents the shipped implementation. Functional end-to-end test (T009) outstanding."
+}

@@ -36,3 +36,8 @@ export function rateLimit(
 export function resetRateLimits(): void {
   buckets.clear();
 }
+
+/** Clear a single limiter key (e.g. after a sysadmin unfreeze resets a stale window). */
+export function clearRateLimit(key: string): void {
+  buckets.delete(key);
+}

@@ -6,6 +6,7 @@ import * as studioSchema from "./studio-schema";
 import * as paSchema from "./pa-schema";
 import * as engineSchema from "./engine-schema";
 import * as wsSchema from "./ws-schema";
+import * as contactsSchema from "./contacts-schema";
 
 const schema = {
   ...landingSchema,
@@ -14,6 +15,7 @@ const schema = {
   ...paSchema,
   ...engineSchema,
   ...wsSchema,
+  ...contactsSchema,
 };
 
 /**

@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { SignOutButton } from "@/components/auth/SignOutButton";
+import { ContactFreezesPanel } from "@/components/admin/ContactFreezesPanel";
 import { getSessionUser, isSystemStaff } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
@@ -40,6 +41,11 @@ export default async function AdminHome() {
           Placeholder for the Admin Console (spec 013) — landing-page branding,
           system roles, and more land here.
         </p>
+        {user.issystemadmin && (
+          <div className="mt-6">
+            <ContactFreezesPanel />
+          </div>
+        )}
         <div className="mt-8 flex gap-3">
           <a
             href="/app"
