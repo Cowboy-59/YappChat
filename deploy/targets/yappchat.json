@@ -40,7 +40,8 @@
       "DATABASE_URL": "arn:aws:ssm:<REGION>:<ACCOUNT_ID>:parameter/yappchat/web/DATABASE_URL",
       "WS_INTERNAL_SECRET": "arn:aws:ssm:<REGION>:<ACCOUNT_ID>:parameter/yappchat/web/WS_INTERNAL_SECRET",
       "GOOGLE_CLIENT_ID": "arn:aws:ssm:<REGION>:<ACCOUNT_ID>:parameter/yappchat/web/GOOGLE_CLIENT_ID",
-      "GOOGLE_CLIENT_SECRET": "arn:aws:ssm:<REGION>:<ACCOUNT_ID>:parameter/yappchat/web/GOOGLE_CLIENT_SECRET"
+      "GOOGLE_CLIENT_SECRET": "arn:aws:ssm:<REGION>:<ACCOUNT_ID>:parameter/yappchat/web/GOOGLE_CLIENT_SECRET",
+      "GIPHY_API_KEY": "arn:aws:ssm:<REGION>:<ACCOUNT_ID>:parameter/yappchat/web/GIPHY_API_KEY"
     }
   },
   "tags": {

@@ -3,8 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { WSProvider, useWSClient, useWSEvent } from "@/components/ws/WSProvider";
 import { scopes, type WSEvent } from "@/lib/ws/events";
+import { EmojiPicker } from "./EmojiPicker";
+import { GifPicker } from "./GifPicker";
 
-type Message = { id: string; authorid: string; authorname?: string | null; content: string | null; direction: string; conversationid?: string; createdat?: string };
+type Attachment = { url: string; name: string; isImage: boolean };
+type Message = { id: string; authorid: string; authorname?: string | null; content: string | null; direction: string; conversationid?: string; createdat?: string; media?: Attachment[] };
 type UserLite = { id: string; displayname: string; email: string };
 type Contact = UserLite & { conversationid: string | null };
 type Request = { contactid: string; conversationid: string | null; from: UserLite };
@@ -42,9 +45,19 @@ function Inner() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const convRef = useRef<string | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [inviteNotice, setInviteNotice] = useState("");
+
+  // Composer: emoji picker + staged image attachments (drag-drop or file picker).
+  const [showEmoji, setShowEmoji] = useState(false);
+  const [showGif, setShowGif] = useState(false);
+  const [pending, setPending] = useState<{ file: File; url: string }[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const reason = new URLSearchParams(window.location.search).get("invite");
@@ -108,6 +121,12 @@ function Inner() {
   useWSEvent("message.inbound", onMessage);
   useWSEvent("message.outbound", onMessage);
 
+  // Keep the newest message in view as the thread grows (and on conversation switch).
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages]);
+
   // Is the active conversation an incoming pending request (→ show Accept/Decline)?
   const pendingIncoming = requests.find((q) => q.conversationid && q.conversationid === activeConv);
   // Can chat freely in: an accepted 1:1 contact, or a group chat I'm in.
@@ -115,16 +134,95 @@ function Inner() {
   const isGroup = groups.some((g) => g.conversationid === activeConv);
   const canSend = Boolean(acceptedContact) || isGroup;
 
+  function insertEmoji(e: string) {
+    const el = inputRef.current;
+    if (el && el.selectionStart != null) {
+      const start = el.selectionStart;
+      const end = el.selectionEnd ?? start;
+      setInput((v) => v.slice(0, start) + e + v.slice(end));
+      requestAnimationFrame(() => {
+        el.focus();
+        const pos = start + e.length;
+        el.setSelectionRange(pos, pos);
+      });
+    } else {
+      setInput((v) => v + e);
+    }
+  }
+
+  /** Stage image files (from drag-drop or the picker) as previews to send. */
+  function addFiles(files: Iterable<File>) {
+    const imgs = [...files].filter((f) => f.type.startsWith("image/"));
+    const next = imgs.map((file) => ({ file, url: URL.createObjectURL(file) }));
+    if (next.length) setPending((p) => [...p, ...next]);
+  }
+  function removePending(i: number) {
+    setPending((p) => {
+      const v = p[i];
+      if (v) URL.revokeObjectURL(v.url);
+      return p.filter((_, idx) => idx !== i);
+    });
+  }
+
   async function send() {
-    if (!activeConv || !input.trim()) return;
+    if (!activeConv || !canSend || uploading) return;
     const content = input.trim();
+    if (!content && pending.length === 0) return;
+
+    let mediaurl: string[] = [];
+    if (pending.length > 0) {
+      setUploading(true);
+      try {
+        mediaurl = await Promise.all(
+          pending.map(async (p) => {
+            const fd = new FormData();
+            fd.append("file", p.file);
+            const r = await fetch("/api/upload", { method: "POST", credentials: "include", body: fd });
+            if (!r.ok) throw new Error("upload_failed");
+            return ((await r.json()) as { key: string }).key;
+          }),
+        );
+      } catch {
+        setUploading(false);
+        return; // keep the staged images so the user can retry
+      }
+      setUploading(false);
+    }
+
     setInput("");
+    setShowEmoji(false);
+    pending.forEach((p) => URL.revokeObjectURL(p.url));
+    setPending([]);
     await fetch(`/api/engine/conversations/${activeConv}/messages`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({ content, mediaurl }),
     });
+  }
+
+  /** Send a chosen Giphy GIF: re-host it to our S3, then send as a media message. */
+  async function sendGif(url: string) {
+    if (!activeConv || !canSend) return;
+    setShowGif(false);
+    try {
+      const r = await fetch("/api/gifs/pick", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ url }),
+      });
+      if (!r.ok) return;
+      const { key } = (await r.json()) as { key: string };
+      await fetch(`/api/engine/conversations/${activeConv}/messages`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ content: "", mediaurl: [key] }),
+      });
+    } catch {
+      /* ignore — user can retry */
+    }
   }
 
   async function respond(contactid: string, accept: boolean) {
@@ -247,7 +345,29 @@ function Inner() {
       </aside>
 
       {/* Right: active conversation */}
-      <section className="flex flex-1 flex-col rounded-xl border border-border bg-card">
+      <section
+        className="relative flex flex-1 flex-col rounded-xl border border-border bg-card"
+        onDragOver={(e) => {
+          if (activeConv && canSend) {
+            e.preventDefault();
+            setDragOver(true);
+          }
+        }}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false);
+        }}
+        onDrop={(e) => {
+          if (!activeConv || !canSend) return;
+          e.preventDefault();
+          setDragOver(false);
+          if (e.dataTransfer.files?.length) addFiles(e.dataTransfer.files);
+        }}
+      >
+        {dragOver && (
+          <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-xl border-2 border-dashed border-primary bg-primary/10 text-sm font-semibold text-primary">
+            Drop images to send
+          </div>
+        )}
         {!activeConv ? (
           <div className="flex flex-1 items-center justify-center p-8 text-center text-sm text-muted-foreground">
             Select a contact, or tap + to start a chat.
@@ -255,7 +375,7 @@ function Inner() {
         ) : (
           <>
             <div className="border-b border-border px-4 py-3 text-sm font-semibold text-foreground">{activeName || "Chat"}</div>
-            <div className="flex-1 space-y-3 overflow-y-auto p-4">
+            <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-4">
               {messages.map((m) => {
                 if (m.authorid === SYSTEM_AUTHOR) {
                   return (
@@ -275,6 +395,34 @@ function Inner() {
                         {m.createdat ? localTime(m.createdat) : ""}
                       </span>
                     </div>
+                    {m.media && m.media.length > 0 && (
+                      <div className={`mb-1 flex flex-wrap gap-1.5 ${mine ? "justify-end" : "justify-start"}`}>
+                        {m.media.map((att) =>
+                          att.isImage ? (
+                            <a key={att.url} href={att.url} target="_blank" rel="noopener noreferrer" title={att.name}>
+                              {/* eslint-disable-next-line @next/next/no-img-element -- presigned S3 URL, not a static asset */}
+                              <img src={att.url} alt={att.name} className="max-h-60 max-w-[16rem] rounded-xl border border-border object-cover" />
+                            </a>
+                          ) : (
+                            <a
+                              key={att.url}
+                              href={att.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              download={att.name}
+                              className="flex max-w-[16rem] items-center gap-2 rounded-xl border border-border bg-background px-3 py-2 text-left hover:bg-muted"
+                              title={`Download ${att.name}`}
+                            >
+                              <span className="text-lg">📄</span>
+                              <span className="min-w-0">
+                                <span className="block truncate text-sm font-medium text-foreground">{att.name}</span>
+                                <span className="block text-[11px] text-muted-foreground">Download</span>
+                              </span>
+                            </a>
+                          ),
+                        )}
+                      </div>
+                    )}
                     {m.content && (
                       <span
                         className={`inline-block max-w-[75%] whitespace-pre-wrap break-words rounded-2xl px-3 py-1.5 text-sm ${mine ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"}`}
@@ -301,23 +449,93 @@ function Inner() {
                 </div>
               </div>
             ) : (
-              <div className="flex items-center gap-2 border-t border-border p-3">
-                <input
-                  className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm disabled:opacity-50"
-                  placeholder={canSend ? "Message…" : "Waiting for them to accept your request…"}
-                  value={input}
-                  disabled={!canSend}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      void send();
-                    }
-                  }}
-                />
-                <button onClick={send} className={primary} disabled={!canSend}>
-                  Send
-                </button>
+              <div className="relative border-t border-border p-3">
+                {showEmoji && canSend && <EmojiPicker onPick={insertEmoji} />}
+                {showGif && canSend && <GifPicker onPick={sendGif} onClose={() => setShowGif(false)} />}
+                {pending.length > 0 && (
+                  <div className="mb-2 flex flex-wrap gap-2">
+                    {pending.map((p, i) => (
+                      <div key={p.url} className="relative">
+                        {/* eslint-disable-next-line @next/next/no-img-element -- local object-URL preview */}
+                        <img src={p.url} alt={p.file.name} className="h-16 w-16 rounded-lg border border-border object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => removePending(i)}
+                          className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-foreground text-[11px] text-background"
+                          aria-label="Remove image"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowGif(false);
+                      setShowEmoji((v) => !v);
+                    }}
+                    disabled={!canSend}
+                    className={`${ghost} px-2 text-lg ${showEmoji ? "border-primary bg-muted" : ""}`}
+                    title="Emoji"
+                    aria-label="Emoji"
+                  >
+                    😊
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowEmoji(false);
+                      setShowGif((v) => !v);
+                    }}
+                    disabled={!canSend}
+                    className={`${ghost} px-2 text-xs font-bold ${showGif ? "border-primary bg-muted" : ""}`}
+                    title="GIF"
+                    aria-label="GIF"
+                  >
+                    GIF
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => imageInputRef.current?.click()}
+                    disabled={!canSend}
+                    className={`${ghost} px-2 text-lg`}
+                    title="Attach image"
+                    aria-label="Attach image"
+                  >
+                    🖼
+                  </button>
+                  <input
+                    ref={imageInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    hidden
+                    onChange={(e) => {
+                      if (e.target.files) addFiles(e.target.files);
+                      e.target.value = "";
+                    }}
+                  />
+                  <input
+                    ref={inputRef}
+                    className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm disabled:opacity-50"
+                    placeholder={canSend ? "Message…" : "Waiting for them to accept your request…"}
+                    value={input}
+                    disabled={!canSend}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        void send();
+                      }
+                    }}
+                  />
+                  <button onClick={send} className={primary} disabled={!canSend || uploading}>
+                    {uploading ? "…" : "Send"}
+                  </button>
+                </div>
               </div>
             )}
           </>

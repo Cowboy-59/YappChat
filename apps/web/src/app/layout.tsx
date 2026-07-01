@@ -33,12 +33,13 @@ export default function RootLayout({
       <head>
         {/*
          * Resolve the theme BEFORE first paint to avoid a flash: use the stored
-         * choice, else the OS preference. Sets data-theme on <html>, which the
-         * token CSS in globals.css keys off. Must be inline + synchronous.
+         * choice, else default to DARK (YappChat ships dark-first). Sets
+         * data-theme on <html>, which the token CSS in globals.css keys off.
+         * Must be inline + synchronous. Users can still toggle to light.
          */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('theme');if(t!=='light'&&t!=='dark'){t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.setAttribute('data-theme',t);}catch(e){}})();`,
+            __html: `(function(){try{var t=localStorage.getItem('theme');if(t!=='light'&&t!=='dark'){t='dark';}document.documentElement.setAttribute('data-theme',t);}catch(e){document.documentElement.setAttribute('data-theme','dark');}})();`,
           }}
         />
       </head>
