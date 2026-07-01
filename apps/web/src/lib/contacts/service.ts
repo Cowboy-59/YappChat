@@ -481,14 +481,39 @@ async function upsertAcceptedContact(db: Db, inviterid: string, accepterId: stri
   }
 }
 
-/** List the caller's DM/group conversations (the Chats inbox). */
-export async function listMyChats(userid: string): Promise<Array<{ conversationid: string; kind: string; title: string }>> {
+/**
+ * List the caller's DM/group conversations (the Chats inbox), newest-active first,
+ * each with a resolved display `name` (the other member for a 1:1; the title or a
+ * member summary for a group) so the UI can show a real chat list.
+ */
+export async function listMyChats(
+  userid: string,
+): Promise<Array<{ conversationid: string; kind: string; title: string; name: string }>> {
   const db = getDb();
   if (!db) return [];
   const rows = await db
-    .select({ id: conversations.id, kind: conversations.kind, title: conversations.title })
+    .select({ id: conversations.id, kind: conversations.kind, title: conversations.title, lastmessageat: conversations.lastmessageat })
     .from(conversationmembers)
     .innerJoin(conversations, eq(conversationmembers.conversationid, conversations.id))
     .where(eq(conversationmembers.userid, userid));
-  return rows.filter((r) => r.kind === "person" || r.kind === "group").map((r) => ({ conversationid: r.id, kind: r.kind, title: r.title }));
+  const chats = rows
+    .filter((r) => r.kind === "person" || r.kind === "group")
+    .sort((a, b) => (b.lastmessageat?.getTime() ?? 0) - (a.lastmessageat?.getTime() ?? 0));
+
+  const out: Array<{ conversationid: string; kind: string; title: string; name: string }> = [];
+  for (const r of chats) {
+    let name = r.title?.trim() ?? "";
+    if (r.kind === "person" || !name) {
+      const others = await db
+        .select({ d: users.displayname, e: users.email })
+        .from(conversationmembers)
+        .innerJoin(users, eq(conversationmembers.userid, users.id))
+        .where(and(eq(conversationmembers.conversationid, r.id), ne(conversationmembers.userid, userid)));
+      const names = others.map((o) => o.d?.trim() || o.e?.split("@")[0] || "").filter(Boolean);
+      if (r.kind === "person") name = names[0] || "Direct message";
+      else if (!name) name = names.slice(0, 3).join(", ") || "Group chat";
+    }
+    out.push({ conversationid: r.id, kind: r.kind, title: r.title, name });
+  }
+  return out;
 }

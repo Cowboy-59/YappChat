@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { WSProvider, useWSClient, useWSEvent } from "@/components/ws/WSProvider";
 import { scopes, type WSEvent } from "@/lib/ws/events";
 import { EmojiPicker } from "./EmojiPicker";
@@ -11,9 +12,7 @@ type Message = { id: string; authorid: string; authorname?: string | null; conte
 type UserLite = { id: string; displayname: string; email: string };
 type Contact = UserLite & { conversationid: string | null };
 type Request = { contactid: string; conversationid: string | null; from: UserLite };
-type Outgoing =
-  | { kind: "request"; contactid: string; conversationid: string | null; to: UserLite }
-  | { kind: "invite"; inviteid: string; email: string };
+type Chat = { conversationid: string; kind: string; name: string };
 
 const SYSTEM_AUTHOR = "yappchat-contact";
 
@@ -32,16 +31,24 @@ function localTime(iso: string): string {
   return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
+/**
+ * The Chats surface is now JUST the active conversation — the chat/contact list +
+ * pending live in the global sidebar (`ChatsNav`). It's URL-driven: `?conv=<id>`
+ * opens a conversation; `?new=1` opens the add-person modal. It still fetches
+ * contacts/chats to resolve the active conversation's title + send-gating.
+ */
 function Inner() {
   const ws = useWSClient();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const convParam = searchParams.get("conv");
+  const newParam = searchParams.get("new");
+
   const [me, setMe] = useState<string>("");
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [requests, setRequests] = useState<Request[]>([]);
-  const [outgoing, setOutgoing] = useState<Outgoing[]>([]);
-  const [groups, setGroups] = useState<Array<{ conversationid: string; title: string }>>([]);
+  const [chats, setChats] = useState<Chat[]>([]);
 
-  const [activeConv, setActiveConv] = useState<string | null>(null);
-  const [activeName, setActiveName] = useState<string>("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const convRef = useRef<string | null>(null);
@@ -50,7 +57,6 @@ function Inner() {
   const [modalOpen, setModalOpen] = useState(false);
   const [inviteNotice, setInviteNotice] = useState("");
 
-  // Composer: emoji picker + staged image attachments (drag-drop or file picker).
   const [showEmoji, setShowEmoji] = useState(false);
   const [showGif, setShowGif] = useState(false);
   const [pending, setPending] = useState<{ file: File; url: string }[]>([]);
@@ -59,6 +65,10 @@ function Inner() {
   const inputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
+  const activeConv = convParam;
+  const refreshNav = () => window.dispatchEvent(new CustomEvent("nav:refresh"));
+
+  // One-shot banner from the invite-accept redirect (?invite=reason).
   useEffect(() => {
     const reason = new URLSearchParams(window.location.search).get("invite");
     if (!reason) return;
@@ -72,46 +82,71 @@ function Inner() {
     };
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot banner from the accept redirect
     setInviteNotice(messages[reason] ?? "That invite couldn't be accepted.");
-    window.history.replaceState(null, "", window.location.pathname);
   }, []);
 
-  const loadContacts = useCallback(async () => {
+  const loadData = useCallback(async () => {
     const [cr, chr] = await Promise.all([
       fetch("/api/contacts", { credentials: "include" }),
       fetch("/api/chats", { credentials: "include" }),
     ]);
     if (cr.ok) {
-      const d = (await cr.json()) as { me: string; contacts: Contact[]; requests: Request[]; outgoing?: Outgoing[] };
+      const d = (await cr.json()) as { me: string; contacts: Contact[]; requests: Request[] };
       setMe(d.me);
       setContacts(d.contacts);
       setRequests(d.requests);
-      setOutgoing(d.outgoing ?? []);
     }
     if (chr.ok) {
-      const d = (await chr.json()) as { chats: Array<{ conversationid: string; kind: string; title: string }> };
-      setGroups(d.chats.filter((c) => c.kind === "group").map((c) => ({ conversationid: c.conversationid, title: c.title || "Group chat" })));
+      const d = (await chr.json()) as { chats: Chat[] };
+      setChats(d.chats);
     }
   }, []);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async load after await
-    void loadContacts();
-  }, [loadContacts]);
+    void loadData();
+  }, [loadData]);
 
-  const openConversation = useCallback(
-    async (conversationid: string | null, name: string) => {
-      if (!conversationid) return;
-      const prev = convRef.current;
-      if (prev && prev !== conversationid) ws.unsubscribe(scopes.conversation(prev));
-      setActiveConv(conversationid);
-      setActiveName(name);
-      convRef.current = conversationid;
-      setMessages([]);
-      ws.subscribe(scopes.conversation(conversationid));
-      const r = await fetch(`/api/engine/conversations/${conversationid}/messages`, { credentials: "include" });
-      if (r.ok) setMessages(((await r.json()) as { messages: Message[] }).messages);
+  const nameForConv = useCallback(
+    (conv: string) => {
+      const c = chats.find((x) => x.conversationid === conv);
+      if (c) return c.name;
+      const ct = contacts.find((x) => x.conversationid === conv);
+      if (ct) return label(ct);
+      const rq = requests.find((x) => x.conversationid === conv);
+      if (rq) return label(rq.from);
+      return "Chat";
     },
-    [ws],
+    [chats, contacts, requests],
   );
+
+  // Open the conversation named by ?conv= (load history, subscribe, mark read).
+  useEffect(() => {
+    if (!convParam) {
+      convRef.current = null;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset the thread when no conversation is selected
+      setMessages([]);
+      return;
+    }
+    if (convParam === convRef.current) return;
+    convRef.current = convParam;
+    setMessages([]);
+    ws.subscribe(scopes.conversation(convParam));
+    let cancelled = false;
+    void (async () => {
+      const r = await fetch(`/api/engine/conversations/${convParam}/messages`, { credentials: "include" });
+      if (!cancelled && r.ok) setMessages(((await r.json()) as { messages: Message[] }).messages);
+      // Mark read, then nudge the sidebar so its unread badge clears now.
+      void fetch(`/api/engine/conversations/${convParam}/read`, { method: "POST", credentials: "include" }).then(refreshNav);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [convParam, ws]);
+
+  // ?new=1 opens the add-person modal.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- open the modal when navigated to ?new=1
+    if (newParam) setModalOpen(true);
+  }, [newParam]);
 
   const onMessage = useCallback((e: WSEvent) => {
     const m = e.payload as Message & { conversationid: string };
@@ -121,18 +156,11 @@ function Inner() {
   useWSEvent("message.inbound", onMessage);
   useWSEvent("message.outbound", onMessage);
 
-  // Keep the newest message in view as the thread grows (and on conversation switch).
+  // Keep the newest message in view as the thread grows.
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
-
-  // Is the active conversation an incoming pending request (→ show Accept/Decline)?
-  const pendingIncoming = requests.find((q) => q.conversationid && q.conversationid === activeConv);
-  // Can chat freely in: an accepted 1:1 contact, or a group chat I'm in.
-  const acceptedContact = contacts.find((c) => c.conversationid === activeConv);
-  const isGroup = groups.some((g) => g.conversationid === activeConv);
-  const canSend = Boolean(acceptedContact) || isGroup;
 
   function insertEmoji(e: string) {
     const el = inputRef.current;
@@ -199,6 +227,7 @@ function Inner() {
       credentials: "include",
       body: JSON.stringify({ content, mediaurl }),
     });
+    refreshNav();
   }
 
   /** Send a chosen Giphy GIF: re-host it to our S3, then send as a media message. */
@@ -220,6 +249,7 @@ function Inner() {
         credentials: "include",
         body: JSON.stringify({ content: "", mediaurl: [key] }),
       });
+      refreshNav();
     } catch {
       /* ignore — user can retry */
     }
@@ -232,20 +262,20 @@ function Inner() {
       credentials: "include",
       body: JSON.stringify({ accept }),
     });
-    await loadContacts();
+    await loadData();
+    refreshNav();
   }
 
-  // Withdraw a sent request / cancel an email invite (FR-008); retracts it from the recipient too.
-  async function withdraw(o: Outgoing) {
-    const url = o.kind === "request" ? `/api/contacts/${o.contactid}` : `/api/contacts/invite/${o.inviteid}`;
-    await fetch(url, { method: "DELETE", credentials: "include" });
-    if (o.kind === "request" && o.conversationid && o.conversationid === convRef.current) {
-      ws.unsubscribe(scopes.conversation(o.conversationid));
-      convRef.current = null;
-      setActiveConv(null);
-    }
-    await loadContacts();
+  function closeModal() {
+    setModalOpen(false);
+    if (newParam) router.replace(activeConv ? `/chats?conv=${activeConv}` : "/chats");
   }
+
+  const acceptedContact = contacts.find((c) => c.conversationid === activeConv);
+  const isGroup = chats.some((c) => c.conversationid === activeConv && c.kind === "group");
+  const canSend = Boolean(acceptedContact) || isGroup;
+  const pendingIncoming = requests.find((q) => q.conversationid && q.conversationid === activeConv);
+  const activeName = activeConv ? nameForConv(activeConv) : "";
 
   return (
     <div className="flex min-h-[72vh] flex-col gap-3">
@@ -257,94 +287,8 @@ function Inner() {
           </button>
         </div>
       )}
-      <div className="flex flex-1 gap-4">
-      {/* Left: contacts + requests */}
-      <aside className="flex w-72 shrink-0 flex-col rounded-xl border border-border bg-card">
-        <div className="flex items-center justify-between border-b border-border p-3">
-          <span className="text-sm font-semibold text-foreground">Chats</span>
-          <button onClick={() => setModalOpen(true)} className={primary} title="New chat / add contact">
-            +
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto p-2">
-          {requests.length > 0 && (
-            <div className="mb-2">
-              <p className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Requests</p>
-              {requests.map((q) => (
-                <div key={q.contactid} className="rounded-lg p-2 hover:bg-muted">
-                  <p className="truncate text-sm font-medium text-foreground">{label(q.from)}</p>
-                  <p className="truncate text-xs text-muted-foreground">wants to connect</p>
-                  <div className="mt-1 flex gap-1">
-                    <button onClick={() => respond(q.contactid, true)} className={`${primary} h-7 px-2 text-xs`}>
-                      Accept
-                    </button>
-                    <button onClick={() => respond(q.contactid, false)} className={`${ghost} h-7 px-2 text-xs`}>
-                      Decline
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          {outgoing.length > 0 && (
-            <div className="mb-2">
-              <p className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pending</p>
-              {outgoing.map((o) => {
-                const name = o.kind === "request" ? label(o.to) : o.email;
-                const key = o.kind === "request" ? o.contactid : o.inviteid;
-                const conv = o.kind === "request" ? o.conversationid : null;
-                return (
-                  <div key={key} className="flex items-center gap-1 rounded-lg p-2 hover:bg-muted">
-                    <button
-                      onClick={() => conv && openConversation(conv, name)}
-                      disabled={!conv}
-                      className={`min-w-0 flex-1 text-left ${activeConv && activeConv === conv ? "font-semibold" : ""}`}
-                    >
-                      <p className="truncate text-sm font-medium text-foreground">{name}</p>
-                      <p className="truncate text-xs text-muted-foreground">{o.kind === "invite" ? "invited — pending" : "pending"}</p>
-                    </button>
-                    <button
-                      onClick={() => withdraw(o)}
-                      className={`${ghost} h-7 px-2 text-xs`}
-                      title={o.kind === "invite" ? "Cancel invite" : "Withdraw request"}
-                      aria-label={o.kind === "invite" ? "Cancel invite" : "Withdraw request"}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-          <p className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Contacts</p>
-          {contacts.length === 0 && <p className="px-2 py-2 text-sm text-muted-foreground">No contacts yet. Tap + to find people.</p>}
-          {contacts.map((c) => (
-            <button
-              key={c.id}
-              onClick={() => openConversation(c.conversationid, label(c))}
-              className={`block w-full truncate rounded-lg p-2 text-left text-sm hover:bg-muted ${activeConv === c.conversationid ? "bg-muted font-semibold" : ""}`}
-            >
-              {label(c)}
-            </button>
-          ))}
-          {groups.length > 0 && (
-            <>
-              <p className="mt-2 px-2 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Group chats</p>
-              {groups.map((g) => (
-                <button
-                  key={g.conversationid}
-                  onClick={() => openConversation(g.conversationid, g.title)}
-                  className={`block w-full truncate rounded-lg p-2 text-left text-sm hover:bg-muted ${activeConv === g.conversationid ? "bg-muted font-semibold" : ""}`}
-                >
-                  {g.title}
-                </button>
-              ))}
-            </>
-          )}
-        </div>
-      </aside>
 
-      {/* Right: active conversation */}
+      {/* The conversation fills the whole surface; the list lives in the sidebar. */}
       <section
         className="relative flex flex-1 flex-col rounded-xl border border-border bg-card"
         onDragOver={(e) => {
@@ -370,7 +314,7 @@ function Inner() {
         )}
         {!activeConv ? (
           <div className="flex flex-1 items-center justify-center p-8 text-center text-sm text-muted-foreground">
-            Select a contact, or tap + to start a chat.
+            Pick a chat or contact from the sidebar — or use the Contacts <span className="mx-1 font-semibold">+</span> to add someone.
           </div>
         ) : (
           <>
@@ -541,18 +485,21 @@ function Inner() {
           </>
         )}
       </section>
-      </div>
 
       {modalOpen && (
         <NewChatModal
           me={me}
           contacts={contacts}
-          onClose={() => setModalOpen(false)}
-          onChanged={loadContacts}
-          onOpenChat={(conversationid, name) => {
+          onClose={closeModal}
+          onChanged={() => {
+            void loadData();
+            refreshNav();
+          }}
+          onOpenChat={(conversationid) => {
             setModalOpen(false);
-            void loadContacts();
-            void openConversation(conversationid, name);
+            void loadData();
+            refreshNav();
+            router.push(`/chats?conv=${conversationid}`);
           }}
         />
       )}

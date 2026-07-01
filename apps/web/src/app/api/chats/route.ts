@@ -1,14 +1,17 @@
 import { NextResponse } from "next/server";
 import { engineContext, engineError, readJson } from "@/lib/engine/http";
 import { createGroupChat, listMyChats } from "@/lib/contacts/service";
+import { unreadByConversation } from "@/lib/engine/service";
 
 export const dynamic = "force-dynamic";
 
-/** GET /api/chats — the caller's DM + group conversations. */
+/** GET /api/chats — the caller's DM + group conversations + per-chat unread counts. */
 export async function GET() {
   const ctx = await engineContext();
   if (!ctx.ok) return ctx.response;
-  return NextResponse.json({ chats: await listMyChats(ctx.user.id) });
+  const chats = await listMyChats(ctx.user.id);
+  const unread = await unreadByConversation(ctx.user.id, chats.map((c) => c.conversationid));
+  return NextResponse.json({ chats, unread });
 }
 
 /** POST /api/chats { memberIds } — start a group chat (members must be contacts). */

@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
   Users,
-  MessageSquare,
   MonitorPlay,
   Hash,
   ChevronRight,
@@ -15,6 +14,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/landing/ThemeToggle";
+import { ChatsNav } from "@/components/chats/ChatsNav";
 
 /** Nav tree shape returned by GET /api/nav. */
 type SpaceNode = { id: string; name: string; conversationid: string; unread: number };
@@ -35,7 +35,6 @@ export function AppSidebar() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const selectedSpace = searchParams.get("space");
-  const selectedConv = searchParams.get("conv");
 
   const [open, setOpen] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set(["sec:communities", "sec:chats"]));
@@ -61,7 +60,7 @@ export function AppSidebar() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async load after await
     void loadTree();
-  }, [loadTree, pathname, selectedSpace, selectedConv]);
+  }, [loadTree, pathname, selectedSpace]);
   useEffect(() => {
     const t = setInterval(() => void loadTree(), POLL_MS);
     return () => clearInterval(t);
@@ -175,39 +174,8 @@ export function AppSidebar() {
               </div>
             )}
 
-            {/* Chats accordion */}
-            <SectionHeader
-              label="Chats"
-              icon={MessageSquare}
-              open={isOpen("sec:chats")}
-              onToggle={() => toggleNode("sec:chats")}
-              active={pathname.startsWith("/messaging")}
-            />
-            {isOpen("sec:chats") && (
-              <div className="mb-1 space-y-0.5">
-                {tree.channels.length === 0 && <Empty>No chats yet.</Empty>}
-                {tree.channels.map((ch) => (
-                  <div key={ch.id}>
-                    <BranchRow label={ch.name} open={isOpen(ch.id)} onToggle={() => toggleNode(ch.id)} />
-                    {isOpen(ch.id) && (
-                      <div className="space-y-0.5">
-                        {ch.conversations.length === 0 && <Empty depth={3}>No conversations.</Empty>}
-                        {ch.conversations.map((cv) => (
-                          <LeafLink
-                            key={cv.id}
-                            href={`/messaging?conv=${cv.id}&channel=${ch.id}`}
-                            label={cv.title}
-                            icon={Hash}
-                            unread={cv.unread}
-                            active={selectedConv === cv.id}
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
+            {/* Chats + Contacts (DM hub) */}
+            <ChatsNav />
 
             <TopLink
               href="/presentations"
