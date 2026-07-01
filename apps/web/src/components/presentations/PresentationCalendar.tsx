@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
@@ -32,11 +32,27 @@ function ymd(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+/** Short local time, e.g. "9:00 PM" — rendered in the VIEWER's timezone. */
+function localHm(iso: string): string {
+  return new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+/** Full local date+time WITH timezone label for the hover tooltip. */
+function localFull(iso: string): string {
+  return new Date(iso).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) +
+    ` (${new Date(iso).toLocaleTimeString([], { timeZoneName: "short" }).split(" ").pop()})`;
+}
+
 export function PresentationCalendar({ items }: { items: CalendarItem[] }) {
   const router = useRouter();
   const today = new Date();
   const [cursor, setCursor] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
   const [busyId, setBusyId] = useState<string | null>(null);
+  // Times must be formatted in the VIEWER's timezone, which only exists on the
+  // client. During SSR the server (UTC) would render the wrong time, so we hold
+  // times back until after mount — otherwise a viewer abroad sees the UTC time.
+  const [mounted, setMounted] = useState(false);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- reveal viewer-TZ times only after hydration
+  useEffect(() => setMounted(true), []);
 
   async function deleteItem(id: string, title: string) {
     if (!window.confirm(`Delete "${title}"? This cancels the presentation and removes it from the calendar.`)) return;
@@ -141,10 +157,15 @@ export function PresentationCalendar({ items }: { items: CalendarItem[] }) {
                   >
                     <Link
                       href={`/presentations/${ev.id}`}
-                      title={`${ev.title} · ${new Date(ev.scheduledstart).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`}
+                      title={mounted ? `${ev.title} · ${localFull(ev.scheduledstart)}` : ev.title}
                       className="flex min-w-0 flex-1 items-center gap-1 px-1.5 py-0.5"
                     >
                       <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${statusDot[ev.status] ?? "bg-primary"}`} />
+                      {mounted && (
+                        <span className="shrink-0 tabular-nums text-[10px] font-semibold text-muted-foreground">
+                          {localHm(ev.scheduledstart)}
+                        </span>
+                      )}
                       <span className="truncate">{ev.title}</span>
                     </Link>
                     {ev.mine && (
