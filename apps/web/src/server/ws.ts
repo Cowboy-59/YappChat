@@ -54,6 +54,16 @@ import { evaluateCapacity, initialCapacityState, type CapacityState } from "../l
   }
 })();
 
+// Safety net: a single WS engine serves ALL live connections, so an unhandled
+// rejection/exception anywhere must NOT crash the process (it would drop every
+// socket). Log and keep serving; individual failures are already handled inline.
+process.on("unhandledRejection", (reason) => {
+  console.error("[ws] unhandledRejection:", reason instanceof Error ? reason.message : String(reason));
+});
+process.on("uncaughtException", (err) => {
+  console.error("[ws] uncaughtException:", err.message);
+});
+
 const WS_PORT = Number(process.env.WS_PORT ?? 3001);
 const INTERNAL_SECRET = process.env.WS_INTERNAL_SECRET ?? "dev-internal-secret";
 const SESSION_COOKIE = "yc_session";
@@ -116,11 +126,19 @@ async function validateSession(token: string): Promise<string | null> {
 async function getUserOrgIds(userid: string): Promise<string[]> {
   const db = getDb();
   if (!db) return [];
-  const rows = await db
-    .select({ orgid: orgmemberships.orgid })
-    .from(orgmemberships)
-    .where(eq(orgmemberships.userid, userid));
-  return rows.map((r) => r.orgid);
+  try {
+    const rows = await db
+      .select({ orgid: orgmemberships.orgid })
+      .from(orgmemberships)
+      .where(eq(orgmemberships.userid, userid));
+    return rows.map((r) => r.orgid);
+  } catch (err) {
+    // A presence-scoping lookup must NEVER crash the engine: this runs in the
+    // connect/disconnect path via `void`, so an unhandled rejection here would
+    // SIGTERM the process and drop every live connection. Degrade to "no orgs".
+    console.error("[ws] getUserOrgIds failed:", (err as Error).message);
+    return [];
+  }
 }
 
 /** Authorize a subscription request for the connected user. */
