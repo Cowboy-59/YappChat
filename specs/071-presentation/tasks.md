@@ -23,6 +23,7 @@
 | 9 | Frontend UI | high | done |
 | 10 | Verification | high | done |
 | 8b | Recording hardening — capture egress lifecycle, pull-on-End retrieval, idempotent register, S3 key normalize, honest recording indicator (FR-023, see [PROPOSED-DELTA.md](PROPOSED-DELTA.md)) | high | done (migration `0023_presentation_egress.sql` applied) |
+| 11b | "Start now" instant presentation — title-only create dated now + route host into the room (FR-026, see [PROPOSED-DELTA-start-now.md](PROPOSED-DELTA-start-now.md)) | medium | done |
 
 ## Task Details
 
