@@ -5,6 +5,7 @@ import { users } from "../db/auth-schema";
 import { contactinvites, contacts, type ContactRow } from "../db/contacts-schema";
 import { channels, conversationmembers, conversations, messages } from "../db/engine-schema";
 import { addConversationMember, createConversation, postSystemMessage, registerChannel } from "../engine/service";
+import { resolveAvatarUrl } from "../account/avatar-resolve";
 import { generateToken, hashToken } from "../auth/crypto";
 import { sendEmail } from "../auth/mailer";
 import { writeAudit } from "../auth/audit";
@@ -243,18 +244,18 @@ export async function respondToContact(contactid: string, userid: string, accept
 }
 
 /** Accepted contacts of a user (the other party + the DM conversation). */
-export async function listContacts(userid: string): Promise<Array<UserLite & { conversationid: string | null }>> {
+export async function listContacts(userid: string): Promise<Array<UserLite & { conversationid: string | null; avatarurl: string | null }>> {
   const db = getDb();
   if (!db) return [];
   const rows = await db
     .select({ requesterid: contacts.requesterid, addresseeid: contacts.addresseeid, conversationid: contacts.conversationid })
     .from(contacts)
     .where(and(eq(contacts.status, "accepted"), or(eq(contacts.requesterid, userid), eq(contacts.addresseeid, userid))));
-  const out: Array<UserLite & { conversationid: string | null }> = [];
+  const out: Array<UserLite & { conversationid: string | null; avatarurl: string | null }> = [];
   for (const r of rows) {
     const otherId = r.requesterid === userid ? r.addresseeid : r.requesterid;
-    const [u] = await db.select({ id: users.id, displayname: users.displayname, email: users.email }).from(users).where(eq(users.id, otherId)).limit(1);
-    if (u) out.push({ ...u, conversationid: r.conversationid });
+    const [u] = await db.select({ id: users.id, displayname: users.displayname, email: users.email, avatarurl: users.avatarurl }).from(users).where(eq(users.id, otherId)).limit(1);
+    if (u) out.push({ id: u.id, displayname: u.displayname, email: u.email, avatarurl: await resolveAvatarUrl(u.avatarurl), conversationid: r.conversationid });
   }
   return out;
 }

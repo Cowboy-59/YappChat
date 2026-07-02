@@ -6,7 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { MessageSquare, Users, ChevronRight, Plus, Hash, Check, X } from "lucide-react";
 
 type UserLite = { id: string; displayname: string; email: string };
-type Contact = UserLite & { conversationid: string | null };
+type Contact = UserLite & { conversationid: string | null; avatarurl?: string | null };
 type Request = { contactid: string; conversationid: string | null; from: UserLite };
 type Outgoing =
   | { kind: "request"; contactid: string; conversationid: string | null; to: UserLite }
@@ -179,6 +179,8 @@ export function ChatsNav() {
               name={label(c)}
               unread={0}
               active={Boolean(c.conversationid) && activeConv === c.conversationid}
+              person
+              avatarUrl={c.avatarurl}
             />
           ))}
         </div>
@@ -206,9 +208,9 @@ function Header({
 }) {
   return (
     <div className="group flex items-center rounded-lg text-muted-foreground">
-      <button onClick={onToggle} className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium hover:bg-muted hover:text-foreground">
+      <button onClick={onToggle} className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-3 py-2 text-lg font-bold hover:bg-muted hover:text-foreground">
         <ChevronRight className={`h-3.5 w-3.5 shrink-0 transition-transform ${open ? "rotate-90" : ""}`} />
-        <Icon className="h-4 w-4 shrink-0" />
+        <Icon className="h-5 w-5 shrink-0" />
         <span className="truncate">{label}</span>
       </button>
       {addHref && (
@@ -224,7 +226,7 @@ function Header({
   );
 }
 
-function Leaf({ href, name, unread, active }: { href: string; name: string; unread: number; active: boolean }) {
+function Leaf({ href, name, unread, active, person, avatarUrl }: { href: string; name: string; unread: number; active: boolean; person?: boolean; avatarUrl?: string | null }) {
   return (
     <Link
       href={href}
@@ -232,7 +234,18 @@ function Leaf({ href, name, unread, active }: { href: string; name: string; unre
         active ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
       }`}
     >
-      <Hash className="h-3.5 w-3.5 shrink-0 opacity-70" />
+      {person ? (
+        avatarUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- presigned S3 avatar URL, not a static asset
+          <img src={avatarUrl} alt="" className="h-5 w-5 shrink-0 rounded-full object-cover" />
+        ) : (
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[10px] font-semibold uppercase text-foreground">
+            {name.slice(0, 1)}
+          </span>
+        )
+      ) : (
+        <Hash className="h-3.5 w-3.5 shrink-0 opacity-70" />
+      )}
       <span className="min-w-0 flex-1 truncate">{name}</span>
       {unread > 0 && !active && (
         <span className="ml-1 inline-flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-bold text-primary-foreground">
