@@ -2,6 +2,7 @@ import { and, count, desc, eq, inArray, isNotNull, isNull, ne, or } from "drizzl
 import { uuidv7 } from "uuidv7";
 import { getDb } from "../db/client";
 import { communitymembers } from "../db/communities-schema";
+import { orgmemberships } from "../db/auth-schema";
 import {
   presentationattendees,
   presentationcaptions,
@@ -63,6 +64,28 @@ async function isCommunityMember(communityid: string, userid: string): Promise<b
   return Boolean(m);
 }
 
+/**
+ * Company-admin oversight: is `adminUserId` an owner/admin of an org the host
+ * belongs to? Used to let a company admin review a member's ENDED presentation
+ * recording (not to grant live access).
+ */
+async function isCompanyAdminOverHost(adminUserId: string | null, hostUserId: string): Promise<boolean> {
+  if (!adminUserId || adminUserId === hostUserId) return false;
+  const db = getDb();
+  if (!db) return false;
+  const adminOrgs = await db
+    .select({ orgid: orgmemberships.orgid })
+    .from(orgmemberships)
+    .where(and(eq(orgmemberships.userid, adminUserId), inArray(orgmemberships.role, ["owner", "admin"])));
+  if (adminOrgs.length === 0) return false;
+  const [shared] = await db
+    .select({ id: orgmemberships.id })
+    .from(orgmemberships)
+    .where(and(eq(orgmemberships.userid, hostUserId), inArray(orgmemberships.orgid, adminOrgs.map((o) => o.orgid))))
+    .limit(1);
+  return Boolean(shared);
+}
+
 function assertScheduleOrder(start: Date, end: Date | null | undefined): void {
   if (end && end.getTime() <= start.getTime()) {
     throw new EngineError("invalid_schedule", 422, "scheduledend must be after scheduledstart");
@@ -120,6 +143,8 @@ export async function getPresentationForViewer(id: string, viewerid: string): Pr
   if (row.status === "canceled") throw new EngineError("presentation_not_found", 404);
   if (row.visibility === "public") return row;
   if (row.communityid && (await isCommunityMember(row.communityid, viewerid))) return row;
+  // Company admins may REVIEW a member's ended presentation (recording), not live.
+  if (row.status === "ended" && (await isCompanyAdminOverHost(viewerid, row.hostuserid))) return row;
   // Private + not host/community-member: invite-based access is resolved in T003.
   throw new EngineError("forbidden", 403);
 }
@@ -779,7 +804,10 @@ export async function joinPresentation(
   const p = await loadPresentation(presentationid);
 
   if (p.status === "canceled") throw new EngineError("presentation_not_found", 404);
-  if (p.status === "ended") throw new EngineError("presentation_ended", 409, "this presentation has ended");
+  // ENDED presentations stay openable in VIEW-ONLY replay mode (FR-019) so the host
+  // and authorized viewers (community members, incl. owners/admins) can review the
+  // recording — no "could not join". Access uses the SAME gate as live; live media
+  // (LiveKit) is nulled for ended in the join route.
 
   const isHost = input.userid != null && input.userid === p.hostuserid;
   const role: "host" | "attendee" = isHost ? "host" : "attendee";
@@ -796,13 +824,16 @@ export async function joinPresentation(
       const member = p.communityid ? await isCommunityMember(p.communityid, input.userid) : false;
       const invite = input.token ? await resolveInvite(input.token, presentationid) : null;
       const inviteOk = invite != null && (invite.inviteduserid == null || invite.inviteduserid === input.userid);
-      if (!member && !inviteOk) throw new EngineError("forbidden", 403, "an invite is required to join this presentation");
+      // A company admin may open an ENDED presentation to review the recording.
+      const companyAdmin = p.status === "ended" && (await isCompanyAdminOverHost(input.userid, p.hostuserid));
+      if (!member && !inviteOk && !companyAdmin) throw new EngineError("forbidden", 403, "an invite is required to join this presentation");
     }
   }
 
   // Capacity cap (FR-007); the host never counts against it. Best-effort under
-  // concurrency — a small over-admit is tolerated for v1.
-  if (!isHost) {
+  // concurrency — a small over-admit is tolerated for v1. Skipped for ended
+  // presentations (replay viewers don't consume a live seat).
+  if (!isHost && p.status !== "ended") {
     const [{ n }] = await db
       .select({ n: count() })
       .from(presentationattendees)

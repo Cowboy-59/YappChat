@@ -29,11 +29,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     });
     // LiveKit connection for the joined participant (host publishes, others watch).
     // null when LiveKit isn't configured — the room still works without live media.
-    const livekit = connectionFor(presentation.id, {
-      identity: attendee.userid ?? `guest-${attendee.id}`,
-      name: user?.displayname ?? attendee.guestname ?? "Guest",
-      isHost: attendee.role === "host",
-    });
+    // ENDED presentations are view-only replay: no live connection.
+    const livekit =
+      presentation.status === "ended"
+        ? null
+        : connectionFor(presentation.id, {
+            identity: attendee.userid ?? `guest-${attendee.id}`,
+            name: user?.displayname ?? attendee.guestname ?? "Guest",
+            isHost: attendee.role === "host",
+          });
     return NextResponse.json({
       attendee,
       presentation: {
