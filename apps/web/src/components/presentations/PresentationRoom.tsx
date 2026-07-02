@@ -193,6 +193,10 @@ export function PresentationRoom({
     await room.localParticipant.setScreenShareEnabled(true, { audio: true });
     await room.localParticipant.setMicrophoneEnabled(true);
     setSharing(true);
+    // Self-preview: LiveKit only auto-attaches REMOTE tracks, so attach the host's
+    // own screen-share locally — otherwise the presenter sees a black stage.
+    const pub = room.localParticipant.getTrackPublication(Track.Source.ScreenShare);
+    if (pub?.track && videoRef.current) pub.track.attach(videoRef.current);
   }
 
   // Host caption capture: chunk mic audio → GROQ STT → broadcast the line.
@@ -364,9 +368,16 @@ export function PresentationRoom({
             <div className="flex flex-wrap items-center gap-2">
               {isHost ? (
                 <>
-                  <button onClick={() => void hostAction("start")} className={`${btn} bg-primary text-primary-foreground hover:opacity-90`}>
-                    Go live
-                  </button>
+                  {joined?.presentation.status === "live" ? (
+                    <span className={`${btn} border border-red-500/40 text-red-500`} title="This session is live and being recorded">
+                      <span className="mr-1.5 inline-block h-2 w-2 animate-pulse rounded-full bg-red-500" />
+                      Recording
+                    </span>
+                  ) : (
+                    <button onClick={() => void hostAction("start")} className={`${btn} bg-primary text-primary-foreground hover:opacity-90`}>
+                      Go live
+                    </button>
+                  )}
                   <button onClick={() => void shareScreen()} disabled={sharing || !joined?.livekit} className={`${btn} border border-border hover:bg-muted`}>
                     {sharing ? "Sharing" : "Share screen"}
                   </button>
