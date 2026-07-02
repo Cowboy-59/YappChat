@@ -71,6 +71,8 @@ export const WSEventType = {
   PresenceInCall: "presence.in_call",
   TypingStart: "message.typing_start",
   TypingStop: "message.typing_stop",
+  // spec 001 FR-015 — soft-delete ("unsend for everyone"); conversation:{id} scope.
+  MessageDeleted: "message.deleted",
   // spec 071 (Presentation) — routed on the `videoroom:{presentationid}` scope.
   VideoroomParticipantJoined: "videoroom.participant_joined",
   VideoroomParticipantLeft: "videoroom.participant_left",

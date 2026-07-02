@@ -131,6 +131,19 @@
   box-shadow: var(--panel-glow);
 }
 
+/* Left rails (icon rail + sidebar): in LIGHT mode the app surface is white, so
+ * tint the rails a soft gray to separate them from the white message area. Dark
+ * mode keeps the elevated bg-card look + glow (rule above). */
+:root:not([data-theme="dark"]) .app-rail {
+  background-color: hsl(220 14% 93%);
+}
+
+/* The far-left icon rail is white in light mode (the sidebar next to it stays
+ * gray, so the two left columns still read as distinct surfaces). */
+:root:not([data-theme="dark"]) .app-iconrail {
+  background-color: hsl(0 0% 100%);
+}
+
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) .bg-card:not(.rounded-full) {
     box-shadow: var(--panel-glow);

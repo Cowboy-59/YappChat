@@ -23,6 +23,10 @@ export type NormalizedMessage = {
   direction: "inbound" | "outbound";
   ackstate: "pending" | "acked" | "nacked";
   createdat: string;
+  /** FR-015 — soft-delete tombstone timestamp; null when the message is live. */
+  deletedat: string | null;
+  /** FR-015 — userid of whoever deleted it (author or admin); null when live. */
+  deletedby: string | null;
 };
 
 /** Returned by a plugin's send(): the platform's own message id(s). */

@@ -109,7 +109,7 @@ export function AppSidebar() {
       )}
 
       <aside
-        className={`hidden shrink-0 overflow-hidden border-r border-border bg-card transition-[width] duration-300 ease-in-out md:flex ${
+        className={`app-rail hidden shrink-0 overflow-hidden border-r border-border bg-card transition-[width] duration-300 ease-in-out md:flex ${
           open ? "w-60" : "w-0 border-r-0"
         }`}
       >

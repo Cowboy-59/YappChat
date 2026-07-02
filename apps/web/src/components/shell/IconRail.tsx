@@ -83,7 +83,7 @@ export function IconRail({
   }
 
   return (
-    <div className="hidden w-14 shrink-0 flex-col items-center border-r border-border bg-card py-3 md:flex">
+    <div className="app-rail app-iconrail hidden w-14 shrink-0 flex-col items-center border-r border-border bg-card py-3 md:flex">
       <nav className="flex flex-1 flex-col items-center gap-1">
         {items.map((it) => {
           const Icon = it.icon;

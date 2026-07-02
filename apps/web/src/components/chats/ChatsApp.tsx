@@ -8,7 +8,7 @@ import { EmojiPicker } from "./EmojiPicker";
 import { GifPicker } from "./GifPicker";
 
 type Attachment = { url: string; name: string; isImage: boolean };
-type Message = { id: string; authorid: string; authorname?: string | null; content: string | null; direction: string; conversationid?: string; createdat?: string; media?: Attachment[] };
+type Message = { id: string; authorid: string; authorname?: string | null; content: string | null; direction: string; conversationid?: string; createdat?: string; media?: Attachment[]; deletedat?: string | null };
 type UserLite = { id: string; displayname: string; email: string };
 type Contact = UserLite & { conversationid: string | null };
 type Request = { contactid: string; conversationid: string | null; from: UserLite };
@@ -50,6 +50,9 @@ function Inner() {
   const [chats, setChats] = useState<Chat[]>([]);
 
   const [messages, setMessages] = useState<Message[]>([]);
+  const [myRole, setMyRole] = useState<string | null>(null);
+  // FR-015 — right-click delete menu: which message + where to anchor it.
+  const [msgMenu, setMsgMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const [input, setInput] = useState("");
   const convRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -129,11 +132,16 @@ function Inner() {
     if (convParam === convRef.current) return;
     convRef.current = convParam;
     setMessages([]);
+    setMyRole(null);
     ws.subscribe(scopes.conversation(convParam));
     let cancelled = false;
     void (async () => {
       const r = await fetch(`/api/engine/conversations/${convParam}/messages`, { credentials: "include" });
-      if (!cancelled && r.ok) setMessages(((await r.json()) as { messages: Message[] }).messages);
+      if (!cancelled && r.ok) {
+        const d = (await r.json()) as { messages: Message[]; myrole?: string | null };
+        setMessages(d.messages);
+        setMyRole(d.myrole ?? null);
+      }
       // Mark read, then nudge the sidebar so its unread badge clears now.
       void fetch(`/api/engine/conversations/${convParam}/read`, { method: "POST", credentials: "include" }).then(refreshNav);
     })();
@@ -155,6 +163,39 @@ function Inner() {
   }, []);
   useWSEvent("message.inbound", onMessage);
   useWSEvent("message.outbound", onMessage);
+
+  // FR-015 — delete-for-everyone: replace the message with its tombstone in place.
+  const onDeleted = useCallback((e: WSEvent) => {
+    const t = e.payload as Message & { conversationid: string };
+    if (t.conversationid !== convRef.current) return;
+    setMessages((prev) => prev.map((x) => (x.id === t.id ? { ...x, content: null, media: [], deletedat: t.deletedat ?? new Date().toISOString() } : x)));
+  }, []);
+  useWSEvent("message.deleted", onDeleted);
+
+  // FR-015 — issue the soft-delete. The WS `message.deleted` echo tombstones it
+  // for everyone (including us), so we only need the confirm + request here.
+  const deleteMessage = useCallback(async (id: string) => {
+    setMsgMenu(null);
+    if (!window.confirm("Delete this message for everyone? This can't be undone.")) return;
+    const r = await fetch(`/api/chats/messages/${id}`, { method: "DELETE", credentials: "include" });
+    if (r.ok) {
+      const { message } = (await r.json()) as { message: Message };
+      setMessages((prev) => prev.map((x) => (x.id === id ? { ...x, content: null, media: [], deletedat: message.deletedat ?? new Date().toISOString() } : x)));
+    }
+  }, []);
+
+  // Dismiss the context menu on any outside click / Escape.
+  useEffect(() => {
+    if (!msgMenu) return;
+    const close = () => setMsgMenu(null);
+    const onKey = (ev: KeyboardEvent) => ev.key === "Escape" && setMsgMenu(null);
+    window.addEventListener("click", close);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [msgMenu]);
 
   // Keep the newest message in view as the thread grows.
   useEffect(() => {
@@ -278,7 +319,7 @@ function Inner() {
   const activeName = activeConv ? nameForConv(activeConv) : "";
 
   return (
-    <div className="flex min-h-[72vh] flex-col gap-3">
+    <div className="flex flex-1 min-h-0 flex-col gap-3">
       {inviteNotice && (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted px-4 py-2 text-sm text-foreground">
           <span>{inviteNotice}</span>
@@ -290,7 +331,8 @@ function Inner() {
 
       {/* The conversation fills the whole surface; the list lives in the sidebar. */}
       <section
-        className="relative flex flex-1 flex-col rounded-xl border border-border bg-card"
+        className="relative flex flex-1 flex-col rounded-xl border border-border"
+        style={{ backgroundColor: "color-mix(in srgb, hsl(var(--card)), #fff 14%)" }}
         onDragOver={(e) => {
           if (activeConv && canSend) {
             e.preventDefault();
@@ -329,8 +371,17 @@ function Inner() {
                   );
                 }
                 const mine = m.authorid === me;
+                const canDelete = !m.deletedat && (mine || myRole === "admin" || myRole === "owner");
                 return (
-                  <div key={m.id} className={mine ? "text-right" : "text-left"}>
+                  <div
+                    key={m.id}
+                    className={mine ? "text-right" : "text-left"}
+                    onContextMenu={(e) => {
+                      if (!canDelete) return; // fall through to the native menu when not deletable
+                      e.preventDefault();
+                      setMsgMenu({ id: m.id, x: e.clientX, y: e.clientY });
+                    }}
+                  >
                     <div className={`mb-0.5 flex items-baseline gap-2 px-1 ${mine ? "justify-end" : "justify-start"}`}>
                       <span className="text-xs font-semibold text-muted-foreground">
                         {m.authorname ?? `${m.authorid.slice(0, 8)}…`}
@@ -339,6 +390,10 @@ function Inner() {
                         {m.createdat ? localTime(m.createdat) : ""}
                       </span>
                     </div>
+                    {m.deletedat ? (
+                      <span className="inline-block rounded-2xl px-3 py-1.5 text-sm italic text-muted-foreground">This message was deleted</span>
+                    ) : (
+                    <>
                     {m.media && m.media.length > 0 && (
                       <div className={`mb-1 flex flex-wrap gap-1.5 ${mine ? "justify-end" : "justify-start"}`}>
                         {m.media.map((att) =>
@@ -369,16 +424,34 @@ function Inner() {
                     )}
                     {m.content && (
                       <span
-                        className={`inline-block max-w-[75%] whitespace-pre-wrap break-words rounded-2xl px-3 py-1.5 text-sm ${mine ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"}`}
+                        className={`inline-block max-w-[75%] whitespace-pre-wrap break-words rounded-2xl px-3 py-1.5 text-sm ${mine ? "bg-green-200 text-slate-950 dark:bg-green-800 dark:text-green-50" : "bg-[color-mix(in_srgb,var(--color-cyan-500),#fff_20%)] text-slate-950"}`}
                       >
                         {m.content}
                       </span>
+                    )}
+                    </>
                     )}
                   </div>
                 );
               })}
               {messages.length === 0 && <p className="text-sm text-muted-foreground">No messages yet.</p>}
             </div>
+
+            {msgMenu && (
+              <div
+                className="fixed z-30 min-w-[10rem] overflow-hidden rounded-lg border border-border bg-card py-1 shadow-lg"
+                style={{ top: msgMenu.y, left: msgMenu.x }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  onClick={() => deleteMessage(msgMenu.id)}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-red-500 hover:bg-muted"
+                >
+                  🗑 Delete message
+                </button>
+              </div>
+            )}
 
             {pendingIncoming ? (
               <div className="flex items-center justify-between gap-2 border-t border-border bg-muted/40 p-3">

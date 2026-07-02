@@ -7,6 +7,7 @@ import {
   channels,
   conversationmembers,
   conversations,
+  messageauditlog,
   messagedeliveries,
   messages,
   type ChannelRow,
@@ -41,6 +42,8 @@ function normalize(m: MessageRow, authorname: string | null = null, media: Attac
     direction: m.direction,
     ackstate: m.ackstate,
     createdat: m.createdat.toISOString(),
+    deletedat: m.deletedat ? m.deletedat.toISOString() : null,
+    deletedby: m.deletedby ?? null,
   };
 }
 
@@ -469,4 +472,62 @@ export async function isConversationMember(conversationid: string, userid: strin
     .where(and(eq(conversationmembers.conversationid, conversationid), eq(conversationmembers.userid, userid)))
     .limit(1);
   return Boolean(row);
+}
+
+/** The caller's role in a conversation ('member' | 'admin' | 'owner'), or null if not a member. */
+export async function conversationRole(conversationid: string, userid: string): Promise<string | null> {
+  const db = getDb();
+  if (!db) return null;
+  const [row] = await db
+    .select({ role: conversationmembers.role })
+    .from(conversationmembers)
+    .where(and(eq(conversationmembers.conversationid, conversationid), eq(conversationmembers.userid, userid)))
+    .limit(1);
+  return row?.role ?? null;
+}
+
+/**
+ * FR-015 — user-initiated soft-delete ("unsend for everyone"). Authorization:
+ * the message author, OR an admin/owner member of the conversation. Clears the
+ * payload, marks the tombstone, writes an immutable audit row, and broadcasts
+ * `message.deleted` so every member's open chat updates live. Idempotent.
+ */
+export async function deleteMessage(input: { messageid: string; actorid: string }): Promise<NormalizedMessage> {
+  const db = getDb();
+  if (!db) throw new EngineError("db_unavailable", 503);
+
+  const [row] = await db.select().from(messages).where(eq(messages.id, input.messageid)).limit(1);
+  if (!row) throw new EngineError("message_not_found", 404);
+
+  // Already a tombstone → no-op, return current state (idempotent delete).
+  if (row.deletedat) return normalize(row);
+
+  // Authz: author always; otherwise must be an admin/owner of the conversation.
+  const isAuthor = row.authorid === input.actorid;
+  if (!isAuthor) {
+    const role = row.conversationid ? await conversationRole(row.conversationid, input.actorid) : null;
+    if (role !== "admin" && role !== "owner") throw new EngineError("forbidden", 403);
+  }
+
+  const deletedat = new Date();
+  const [updated] = await db
+    .update(messages)
+    .set({ deletedat, deletedby: input.actorid, content: null, encryptedpayload: null, mediaurl: [] })
+    .where(eq(messages.id, input.messageid))
+    .returning();
+
+  await db.insert(messageauditlog).values({
+    id: uuidv7(),
+    messageid: row.id,
+    conversationid: row.conversationid,
+    actorid: input.actorid,
+    action: "user-delete",
+  });
+
+  const tombstone = normalize(updated);
+  // Delete-for-everyone: notify all members on the membership-checked scope.
+  if (tombstone.conversationid) {
+    await publishEvent({ type: "message.deleted", scope: scopes.conversation(tombstone.conversationid), payload: tombstone });
+  }
+  return tombstone;
 }
