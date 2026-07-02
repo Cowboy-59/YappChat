@@ -61,6 +61,10 @@ export const presentations = ycSchema.table(
     // Hard cap (spec 071 v1 = 100); joins beyond it are refused ("room full").
     maxattendees: integer("maxattendees").notNull().default(100),
     status: presentationStatusEnum("status").notNull().default("scheduled"),
+    // FR-023 — captured LiveKit egress lifecycle (recording control/observability).
+    egressid: text("egressid"),
+    egressstatus: text("egressstatus"), // starting | active | ended | failed
+    egresserror: text("egresserror"),
     startedat: timestamp("startedat", { withTimezone: true }),
     endedat: timestamp("endedat", { withTimezone: true }),
     createdat: timestamp("createdat", { withTimezone: true }).notNull().defaultNow(),
@@ -148,6 +152,7 @@ export const presentationrecordings = ycSchema.table(
       .notNull()
       .references(() => presentations.id, { onDelete: "cascade" }),
     mediaurl: text("mediaurl").notNull(), // S3 key from LiveKit egress
+    egressid: text("egressid"), // FR-023 — dedup key: webhook + pull-on-End must not double-insert
     durationms: integer("durationms"),
     status: recordingStatusEnum("status").notNull().default("processing"),
     // Retained indefinitely; soft-deleted on host delete (no auto-expiry).

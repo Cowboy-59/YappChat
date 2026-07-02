@@ -142,11 +142,16 @@ async function twirp(service: string, method: string, room: string, body: unknow
   }
 }
 
-/** Start room-composite egress → S3 MP4 (screen + audio + burned captions). Best-effort. */
-export async function startRoomEgress(presentationid: string): Promise<void> {
-  if (!egressConfigured()) return;
+/**
+ * Start room-composite egress → S3 MP4 (screen + audio + burned captions).
+ * Returns the LiveKit egress id (so we can pull the result on End) or an error
+ * string. Never throws — a null id with an error lets the caller record + surface
+ * the failure instead of showing a "Recording" badge that lies.
+ */
+export async function startRoomEgress(presentationid: string): Promise<{ egressId: string | null; error: string | null }> {
+  if (!egressConfigured()) return { egressId: null, error: "egress_unconfigured" };
   const room = roomName(presentationid);
-  await twirp("Egress", "StartRoomCompositeEgress", room, {
+  const res = await twirp("Egress", "StartRoomCompositeEgress", room, {
     room_name: room,
     layout: "speaker",
     file_outputs: [
@@ -157,6 +162,74 @@ export async function startRoomEgress(presentationid: string): Promise<void> {
       },
     ],
   });
+  if (!res) return { egressId: null, error: "livekit_unreachable" };
+  const text = await res.text().catch(() => "");
+  if (!res.ok) return { egressId: null, error: `egress_start_${res.status}: ${text.slice(0, 300)}` };
+  try {
+    const info = JSON.parse(text) as { egress_id?: string; egressId?: string };
+    return { egressId: info.egress_id ?? info.egressId ?? null, error: null };
+  } catch {
+    return { egressId: null, error: "egress_start_unparseable" };
+  }
+}
+
+type EgressFile = { filename?: string; location?: string; duration?: string | number };
+type EgressItem = {
+  egress_id?: string;
+  egressId?: string;
+  status?: string; // EGRESS_STARTING | EGRESS_ACTIVE | EGRESS_ENDING | EGRESS_COMPLETE | EGRESS_FAILED | EGRESS_ABORTED
+  error?: string;
+  file_results?: EgressFile[];
+  fileResults?: EgressFile[];
+  file?: EgressFile;
+};
+
+/** Reduce any S3 location/URL LiveKit reports to a bare key relative to our bucket. */
+export function normalizeS3Key(location: string): string {
+  let k = location.trim();
+  k = k.replace(/^s3:\/\/[^/]+\//i, ""); // s3://bucket/key
+  k = k.replace(/^https?:\/\/[^/]+\//i, ""); // https://bucket.s3.region.amazonaws.com/key
+  k = k.replace(/^\/+/, ""); // leading slashes
+  try {
+    k = decodeURIComponent(k);
+  } catch {
+    /* leave as-is */
+  }
+  return k;
+}
+
+/**
+ * Pull the latest egress for a presentation's room via ListEgress — the primary
+ * way we retrieve a finished recording (we do NOT depend on the webhook). Returns
+ * the normalized S3 key, duration, LiveKit status, and any error. Best-effort.
+ */
+export async function getEgressInfo(
+  presentationid: string,
+  egressId?: string | null,
+): Promise<{ status: string | null; fileKey: string | null; durationms: number | null; error: string | null } | null> {
+  if (!livekitConfigured()) return null;
+  const room = roomName(presentationid);
+  const res = await twirp("Egress", "ListEgress", room, egressId ? { egress_id: egressId } : { room_name: room });
+  if (!res || !res.ok) return null;
+  const text = await res.text().catch(() => "");
+  let items: EgressItem[] = [];
+  try {
+    const parsed = JSON.parse(text) as { items?: EgressItem[] };
+    items = parsed.items ?? [];
+  } catch {
+    return null;
+  }
+  if (items.length === 0) return { status: null, fileKey: null, durationms: null, error: null };
+  // Prefer the requested egress, else the most recent item.
+  const item = (egressId && items.find((i) => (i.egress_id ?? i.egressId) === egressId)) || items[items.length - 1];
+  const file = item.file_results?.[0] ?? item.fileResults?.[0] ?? item.file;
+  const loc = file?.filename ?? file?.location ?? null;
+  return {
+    status: item.status ?? null,
+    fileKey: loc ? normalizeS3Key(loc) : null,
+    durationms: file?.duration ? Math.round(Number(file.duration) / 1e6) : null,
+    error: item.error || null,
+  };
 }
 
 /** Close the LiveKit room (disconnects everyone, finalizes egress). Best-effort. */

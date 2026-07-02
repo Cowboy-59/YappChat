@@ -26,7 +26,7 @@ import {
   publishPresentationStatus,
 } from "./realtime";
 import { transcribeAudio, translateText } from "./captions";
-import { closeRoom, startRoomEgress } from "./livekit";
+import { closeRoom, getEgressInfo, normalizeS3Key, startRoomEgress } from "./livekit";
 import { presignGet, storageConfigured } from "../storage/s3";
 import { EngineError } from "../engine/errors";
 
@@ -193,8 +193,18 @@ export async function startPresentation(id: string, actorid: string): Promise<Pr
       .set({ status: "live", startedat: p.startedat ?? new Date(), updatedat: new Date() })
       .where(eq(presentations.id, id));
     await publishPresentationStatus(id, "live");
-    // Begin recording egress (best-effort; no-op when egress isn't configured).
-    await startRoomEgress(id);
+    // FR-023 — begin recording egress and CAPTURE the outcome (id or error) so the
+    // host indicator reflects reality and we can pull the file on End.
+    const { egressId, error } = await startRoomEgress(id);
+    await db
+      .update(presentations)
+      .set({
+        egressid: egressId,
+        egressstatus: error ? "failed" : egressId ? "active" : null,
+        egresserror: error,
+        updatedat: new Date(),
+      })
+      .where(eq(presentations.id, id));
   }
   return loadPresentation(id);
 }
@@ -214,29 +224,87 @@ export async function endPresentation(id: string, actorid: string): Promise<Pres
   await publishPresentationStatus(id, "ended");
   // Close the LiveKit room (disconnects everyone, finalizes egress). Best-effort.
   await closeRoom(id);
+  // FR-023 — take control of the result: actively pull the finished egress file
+  // instead of waiting for the webhook. Best-effort + idempotent (dedup on
+  // egressid), so the webhook, if it also fires, won't create a duplicate.
+  await finalizeRecordingFromEgress(id).catch((err) =>
+    console.error("[presentations] finalizeRecordingFromEgress failed:", (err as Error).message),
+  );
   return loadPresentation(id);
+}
+
+/**
+ * FR-023 — pull the room's finished egress via ListEgress and register the
+ * recording. Runs on End (primary) and can be re-run safely (idempotent). Marks
+ * the presentation's egressstatus so the host indicator can settle.
+ */
+export async function finalizeRecordingFromEgress(id: string): Promise<void> {
+  const db = getDb();
+  if (!db) return;
+  const p = await loadPresentation(id);
+  const info = await getEgressInfo(id, p.egressid);
+  if (!info) return;
+  if (info.fileKey) {
+    await registerRecording(id, { mediaurl: info.fileKey, durationms: info.durationms, egressid: p.egressid ?? undefined });
+  }
+  const settled = info.status === "EGRESS_COMPLETE" ? "ended" : info.status === "EGRESS_FAILED" || info.status === "EGRESS_ABORTED" ? "failed" : p.egressstatus;
+  await db
+    .update(presentations)
+    .set({ egressstatus: settled, egresserror: info.error ?? p.egresserror, updatedat: new Date() })
+    .where(eq(presentations.id, id));
 }
 
 // ── Recording + replay (T008 — FR-018/019/020/022) ──────────────────────────────
 
-/** Register a finished recording (called by the LiveKit egress webhook). */
+/**
+ * Register a finished recording. Called by BOTH the pull-on-End path and the
+ * LiveKit egress webhook, so it is idempotent by `egressid`: a second call for
+ * the same egress returns the existing row instead of inserting a duplicate.
+ * `mediaurl` is normalized to a bare S3 key so replay's presign always resolves.
+ */
 export async function registerRecording(
   presentationid: string,
-  input: { mediaurl: string; durationms?: number | null },
+  input: { mediaurl: string; durationms?: number | null; egressid?: string },
 ): Promise<PresentationRecordingRow> {
   const db = getDb();
   if (!db) throw new EngineError("db_unavailable", 503);
   await loadPresentation(presentationid); // 404 if the presentation is gone
+
+  if (input.egressid) {
+    const [existing] = await db
+      .select()
+      .from(presentationrecordings)
+      .where(eq(presentationrecordings.egressid, input.egressid))
+      .limit(1);
+    if (existing) return existing;
+  }
+
   const id = uuidv7();
   await db.insert(presentationrecordings).values({
     id,
     presentationid,
-    mediaurl: input.mediaurl,
+    mediaurl: normalizeS3Key(input.mediaurl),
+    egressid: input.egressid ?? null,
     durationms: input.durationms ?? null,
     status: "ready",
   });
   const [row] = await db.select().from(presentationrecordings).where(eq(presentationrecordings.id, id)).limit(1);
   return row;
+}
+
+/** FR-023 — host-only egress status for the in-room recording indicator. */
+export async function egressStatusFor(
+  presentationid: string,
+  actorid: string,
+): Promise<{ egressstatus: string | null; egressid: string | null; egresserror: string | null; startedat: string | null }> {
+  const p = await loadPresentation(presentationid);
+  if (p.hostuserid !== actorid) throw new EngineError("not_host", 403);
+  return {
+    egressstatus: p.egressstatus ?? null,
+    egressid: p.egressid ?? null,
+    egresserror: p.egresserror ?? null,
+    startedat: p.startedat ? p.startedat.toISOString() : null,
+  };
 }
 
 /**

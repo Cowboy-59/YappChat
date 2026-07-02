@@ -24,10 +24,20 @@ export async function POST(req: Request) {
 
   if (event.event === "egress_ended") {
     const info = (event.egressInfo ?? event.egress_info) as
-      | { roomName?: string; room_name?: string; duration?: string | number; fileResults?: unknown[]; file_results?: unknown[]; file?: unknown }
+      | {
+          roomName?: string;
+          room_name?: string;
+          egressId?: string;
+          egress_id?: string;
+          duration?: string | number;
+          fileResults?: unknown[];
+          file_results?: unknown[];
+          file?: unknown;
+        }
       | undefined;
     const room = info?.roomName ?? info?.room_name;
     const pid = room ? roomNameToPresentationId(room) : null;
+    const egressid = info?.egressId ?? info?.egress_id;
     const file = (info?.fileResults?.[0] ?? info?.file_results?.[0] ?? info?.file) as
       | { filename?: string; location?: string }
       | undefined;
@@ -36,7 +46,8 @@ export async function POST(req: Request) {
     const durationms = info?.duration ? Math.round(Number(info.duration) / 1e6) : null;
     if (pid && mediaurl) {
       try {
-        await registerRecording(pid, { mediaurl, durationms });
+        // Idempotent by egressid — the pull-on-End path may have registered it first.
+        await registerRecording(pid, { mediaurl, durationms, egressid });
       } catch (err) {
         console.error("[livekit-webhook] registerRecording failed:", (err as Error).message);
       }
