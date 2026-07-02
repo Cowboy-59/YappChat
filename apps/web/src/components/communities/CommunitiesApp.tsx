@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { WSProvider, useWSClient, useWSEvent } from "@/components/ws/WSProvider";
 import { SpaceCreateForm, type SpaceCreatePayload } from "@/components/communities/SpaceCreateForm";
@@ -33,6 +33,7 @@ type Message = {
   id: string;
   authorid: string;
   authorname: string | null;
+  authoravatar?: string | null;
   content: string | null;
   media: Attachment[]; // presigned attachments (images render inline; others as download chips)
   direction: string;
@@ -71,11 +72,63 @@ function linkify(text: string): ReactNode[] {
   return nodes;
 }
 
-/** Format a UTC ISO timestamp in the reader's local timezone (e.g. "Jun 22, 2:45 PM"). */
-function localTime(iso: string): string {
+/** Just the clock time (e.g. "2:45 PM") for the in-bubble timestamp. */
+function clockTime(iso?: string): string {
+  if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+
+/** True when two ISO timestamps fall on the same local calendar day. */
+function sameLocalDay(a?: string, b?: string): boolean {
+  if (!a || !b) return false;
+  const x = new Date(a);
+  const y = new Date(b);
+  return x.getFullYear() === y.getFullYear() && x.getMonth() === y.getMonth() && x.getDate() === y.getDate();
+}
+
+/** "Today" / "Yesterday" / "Mon, Jul 2" for a date separator. */
+function dayLabel(iso?: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const diff = Math.round((today.getTime() - day.getTime()) / 86_400_000);
+  if (diff === 0) return "Today";
+  if (diff === 1) return "Yesterday";
+  return d.toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    ...(d.getFullYear() !== today.getFullYear() ? { year: "numeric" } : {}),
+  });
+}
+
+/** Small circular avatar for a message author (image or initial fallback). */
+function MsgAvatar({ url, name }: { url?: string | null; name: string }) {
+  if (url) {
+    // eslint-disable-next-line @next/next/no-img-element -- presigned S3 avatar URL, not a static asset
+    return <img src={url} alt="" className="h-7 w-7 shrink-0 rounded-full object-cover" />;
+  }
+  return (
+    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[11px] font-semibold uppercase text-foreground">
+      {name.slice(0, 1)}
+    </span>
+  );
+}
+
+/** A bold date separator line shown between message groups from different days. */
+function DateDivider({ iso }: { iso?: string }) {
+  return (
+    <div className="my-3 flex items-center gap-3 px-1">
+      <div className="h-px flex-1 bg-border" />
+      <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{dayLabel(iso)}</span>
+      <div className="h-px flex-1 bg-border" />
+    </div>
+  );
 }
 
 // Curated emoji set (no dependency) grouped by category for the composer picker.
@@ -874,66 +927,70 @@ function Inner({ currentUserId }: { currentUserId: string }) {
                 </div>
               )}
               <div className="space-y-3" style={{ zoom }}>
-              {messages.map((m) => {
+              {messages.map((m, i) => {
+                const prev = messages[i - 1];
+                const divider = !sameLocalDay(prev?.createdat, m.createdat) ? <DateDivider iso={m.createdat} /> : null;
                 const mine = m.authorid === currentUserId;
                 const isBot = m.authorid === AI_ASSISTANT_AUTHOR_ID;
+                const label = isBot ? "🤖 Assistant" : (m.authorname ?? `${m.authorid.slice(0, 8)}…`);
                 return (
-                  <div key={m.id} className={mine ? "text-right" : "text-left"}>
-                    <div className={`mb-0.5 flex items-baseline gap-2 px-1 ${mine ? "justify-end" : "justify-start"}`}>
-                      {mine || isBot ? (
-                        <span className="text-xs font-semibold text-muted-foreground">
-                          {isBot ? "🤖 Assistant" : (m.authorname ?? `${m.authorid.slice(0, 8)}…`)}
-                        </span>
-                      ) : (
-                        <button
-                          type="button"
-                          title="Ask to connect"
-                          onClick={() => askToConnect(m.authorid, m.authorname ?? "this person")}
-                          className="text-xs font-semibold text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-                        >
-                          {m.authorname ?? `${m.authorid.slice(0, 8)}…`}
-                        </button>
-                      )}
-                      <span className="text-[11px] text-muted-foreground/70" title={new Date(m.createdat).toLocaleString()}>
-                        {localTime(m.createdat)}
-                      </span>
-                    </div>
-                    {m.media.length > 0 && (
-                      <div className={`mb-1 flex flex-wrap gap-1.5 ${mine ? "justify-end" : "justify-start"}`}>
-                        {m.media.map((att) =>
-                          att.isImage ? (
-                            <a key={att.url} href={att.url} target="_blank" rel="noopener noreferrer" title={att.name}>
-                              {/* eslint-disable-next-line @next/next/no-img-element -- presigned S3 URL, not a static asset */}
-                              <img src={att.url} alt={att.name} className="max-h-60 max-w-[16rem] rounded-xl border border-border object-cover" />
-                            </a>
+                  <Fragment key={m.id}>
+                    {divider}
+                    <div className={`flex items-end gap-2 ${mine ? "justify-end" : "justify-start"}`}>
+                      {!mine && <MsgAvatar url={isBot ? null : m.authoravatar} name={label} />}
+                      <div className={`flex min-w-0 max-w-[78%] flex-col ${mine ? "items-end" : "items-start"}`}>
+                        {!mine &&
+                          (isBot ? (
+                            <span className="mb-0.5 px-1 text-xs font-semibold text-muted-foreground">{label}</span>
                           ) : (
-                            <a
-                              key={att.url}
-                              href={att.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              download={att.name}
-                              className="flex max-w-[16rem] items-center gap-2 rounded-xl border border-border bg-background px-3 py-2 text-left hover:bg-muted"
-                              title={`Download ${att.name}`}
+                            <button
+                              type="button"
+                              title="Ask to connect"
+                              onClick={() => askToConnect(m.authorid, m.authorname ?? "this person")}
+                              className="mb-0.5 px-1 text-xs font-semibold text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
                             >
-                              <span className="text-lg">📄</span>
-                              <span className="min-w-0">
-                                <span className="block truncate text-sm font-medium text-foreground">{att.name}</span>
-                                <span className="block text-[11px] text-muted-foreground">Download</span>
-                              </span>
-                            </a>
-                          ),
+                              {label}
+                            </button>
+                          ))}
+                        {m.media.length > 0 && (
+                          <div className={`mb-1 flex flex-wrap gap-1.5 ${mine ? "justify-end" : "justify-start"}`}>
+                            {m.media.map((att) =>
+                              att.isImage ? (
+                                <a key={att.url} href={att.url} target="_blank" rel="noopener noreferrer" title={att.name}>
+                                  {/* eslint-disable-next-line @next/next/no-img-element -- presigned S3 URL, not a static asset */}
+                                  <img src={att.url} alt={att.name} className="max-h-60 max-w-[16rem] rounded-xl border border-border object-cover" />
+                                </a>
+                              ) : (
+                                <a
+                                  key={att.url}
+                                  href={att.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  download={att.name}
+                                  className="flex max-w-[16rem] items-center gap-2 rounded-xl border border-border bg-background px-3 py-2 text-left hover:bg-muted"
+                                  title={`Download ${att.name}`}
+                                >
+                                  <span className="text-lg">📄</span>
+                                  <span className="min-w-0">
+                                    <span className="block truncate text-sm font-medium text-foreground">{att.name}</span>
+                                    <span className="block text-[11px] text-muted-foreground">Download</span>
+                                  </span>
+                                </a>
+                              ),
+                            )}
+                          </div>
+                        )}
+                        {m.content && (
+                          <span
+                            className={`inline-block max-w-full whitespace-pre-wrap break-words rounded-2xl px-3 py-1.5 text-sm ${mine ? "bg-green-200 text-slate-950 dark:bg-green-800 dark:text-green-50" : isBot ? "bg-muted text-foreground" : "bg-[color-mix(in_srgb,var(--color-cyan-500),#fff_20%)] text-slate-950"}`}
+                          >
+                            {linkify(m.content)}
+                            <span className="mt-0.5 block text-right text-[10px] opacity-60">{clockTime(m.createdat)}</span>
+                          </span>
                         )}
                       </div>
-                    )}
-                    {m.content && (
-                      <span
-                        className={`inline-block max-w-[75%] whitespace-pre-wrap break-words rounded-2xl px-3 py-1.5 text-sm ${mine ? "bg-green-200 text-slate-950 dark:bg-green-800 dark:text-green-50" : isBot ? "bg-muted text-foreground" : "bg-[color-mix(in_srgb,var(--color-cyan-500),#fff_20%)] text-slate-950"}`}
-                      >
-                        {linkify(m.content)}
-                      </span>
-                    )}
-                  </div>
+                    </div>
+                  </Fragment>
                 );
               })}
               {messages.length === 0 && <p className="text-sm text-muted-foreground">No messages yet.</p>}

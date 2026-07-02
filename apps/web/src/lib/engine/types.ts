@@ -16,6 +16,8 @@ export type NormalizedMessage = {
   authorid: string;
   /** Account display name (spec 011), or the email local-part fallback; null if the author isn't a known user. */
   authorname: string | null;
+  /** Resolved (presigned) avatar URL for the author; null if none or not a known user. */
+  authoravatar: string | null;
   /** Attachments (presigned URL + filename + isImage), stored privately on S3 as keys. */
   media: Attachment[];
   content: string | null;

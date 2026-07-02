@@ -17,6 +17,7 @@ import {
 } from "../db/engine-schema";
 import { publishEvent } from "../ws/broker";
 import { presignAttachments, type Attachment } from "../storage/s3";
+import { resolveAvatarUrl } from "../account/avatar-resolve";
 import { scopes } from "../ws/events";
 import { EngineError } from "./errors";
 import { sendViaPlugin, startAccount } from "./gateway";
@@ -29,13 +30,19 @@ import type { NormalizedMessage } from "./types";
  * WS engine on the channel scope.
  */
 
-function normalize(m: MessageRow, authorname: string | null = null, media: Attachment[] = []): NormalizedMessage {
+function normalize(
+  m: MessageRow,
+  authorname: string | null = null,
+  media: Attachment[] = [],
+  authoravatar: string | null = null,
+): NormalizedMessage {
   return {
     id: m.id,
     channelid: m.channelid,
     conversationid: m.conversationid,
     authorid: m.authorid,
     authorname,
+    authoravatar,
     media,
     content: m.content,
     messagetype: m.messagetype,
@@ -166,15 +173,24 @@ export async function listMessages(conversationid: string): Promise<NormalizedMe
   // inArray lookup binds the ids and casts cleanly.
   const ids = [...new Set(rows.map((r) => r.authorid))].filter((id) => UUID_RE.test(id));
   const labels = new Map<string, string | null>();
+  const avatars = new Map<string, string | null>();
   if (ids.length) {
     const us = await db
-      .select({ id: users.id, displayname: users.displayname, email: users.email })
+      .select({ id: users.id, displayname: users.displayname, email: users.email, avatarurl: users.avatarurl })
       .from(users)
       .where(inArray(users.id, ids));
-    for (const u of us) labels.set(u.id, authorLabelFrom(u.displayname, u.email));
+    // Resolve each unique author's avatar once (presign), not per message.
+    await Promise.all(
+      us.map(async (u) => {
+        labels.set(u.id, authorLabelFrom(u.displayname, u.email));
+        avatars.set(u.id, await resolveAvatarUrl(u.avatarurl));
+      }),
+    );
   }
   return Promise.all(
-    rows.map(async (m) => normalize(m, labels.get(m.authorid) ?? null, await presignAttachments(m.mediaurl))),
+    rows.map(async (m) =>
+      normalize(m, labels.get(m.authorid) ?? null, await presignAttachments(m.mediaurl), avatars.get(m.authorid) ?? null),
+    ),
   );
 }
 
