@@ -90,16 +90,25 @@ export function SchedulePresentationForm() {
     }
   }
 
-  /** FR-026 — start an impromptu presentation immediately: create it dated now and
-   *  drop the host straight into the room to go live. Only a title is required. */
+  /** FR-026 — start an impromptu presentation immediately: create it dated from the
+   *  (now-seeded, calendar-editable) start fields and drop the host into the room. */
   async function startNow() {
-    if (!title.trim()) {
-      setNote("Add a title to start now.");
+    if (!title.trim() || !date || !time) {
+      setNote("Add a title and start time.");
       return;
     }
-    const id = await postCreate(new Date().toISOString());
+    const id = await postCreate(new Date(`${date}T${time}`).toISOString());
     if (id) router.push(`/presentations/${id}`);
     else setNote("Could not start — try again.");
+  }
+
+  /** Open the form for "Start now": seed the start date + time to right now (the
+   *  host can still change the date via the calendar picker). */
+  function openStartNow() {
+    const d = new Date();
+    setDate(localDate(d));
+    setTime(localTime(d));
+    setOpen(true);
   }
 
   /** Open the form, seeding the calendar to the next round half-hour ~1h out. */
@@ -119,7 +128,7 @@ export function SchedulePresentationForm() {
     return (
       <div className="flex flex-wrap gap-2">
         <button
-          onClick={() => setOpen(true)}
+          onClick={openStartNow}
           className="inline-flex min-h-[36px] items-center rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:opacity-90"
         >
           ▶ Start now
@@ -217,7 +226,7 @@ export function SchedulePresentationForm() {
       <div className="flex flex-wrap items-center gap-2">
         <button
           onClick={startNow}
-          disabled={busy || !title.trim()}
+          disabled={busy || !title.trim() || !date || !time}
           title="Create and go straight into the room now"
           className="inline-flex min-h-[36px] items-center rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
         >
