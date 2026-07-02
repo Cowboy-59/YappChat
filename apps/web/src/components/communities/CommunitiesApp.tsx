@@ -597,6 +597,12 @@ function Inner({ currentUserId }: { currentUserId: string }) {
     return () => el.removeEventListener("wheel", onWheel);
   }, [space]);
 
+  // Keep the newest message in view (and start at the bottom when a space opens).
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages]);
+
   const loadCommunities = useCallback(async () => {
     const r = await fetch("/api/communities", { credentials: "include" });
     if (r.ok) setCommunities((await r.json()).communities);
