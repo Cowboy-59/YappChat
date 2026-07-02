@@ -5,6 +5,7 @@ import { Room, RoomEvent, Track, type RemoteTrack } from "livekit-client";
 import { SUPPORTED_LANGUAGES } from "@/lib/account/languages";
 import { ThemeToggle } from "@/components/landing/ThemeToggle";
 import { ReplayPlayer } from "./ReplayPlayer";
+import { ReplayChatSummary } from "./ReplayChatSummary";
 
 type Joined = {
   attendee: { id: string; role: "host" | "attendee" };
@@ -161,6 +162,19 @@ export function PresentationRoom({
     },
     [translate],
   );
+
+  // Switching the caption language must take effect on the captions ALREADY on
+  // screen — not only the next spoken line. Clear stale translations (they were
+  // for the previous language), then re-translate the current lines.
+  useEffect(() => {
+    // Clear stale translations (they were for the previous language)…
+    setCaptions((cs) => cs.map((c) => ({ ...c, translated: undefined })));
+    // …then re-translate the lines currently on screen into the new language.
+    if (captionLang) {
+      for (const c of captions) if (captionLang !== c.lang) void translate(c.id, c.base, c.lang);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run only when the selected language changes
+  }, [captionLang]);
 
   // ── Join + LiveKit connect ─────────────────────────────────────────────────
   const join = useCallback(
@@ -443,7 +457,10 @@ export function PresentationRoom({
           </div>
 
           {ended ? (
-            <ReplayPlayer presentationId={presentationId} />
+            <>
+              <ReplayPlayer presentationId={presentationId} />
+              <ReplayChatSummary presentationId={presentationId} />
+            </>
           ) : (
             <div className="relative aspect-video overflow-hidden rounded-xl border border-border bg-black">
               <video ref={videoRef} className="h-full w-full object-contain" autoPlay playsInline />

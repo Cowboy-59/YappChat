@@ -5,6 +5,7 @@ import { communitymembers } from "../db/communities-schema";
 import {
   presentationattendees,
   presentationcaptions,
+  presentationchatmessages,
   presentationinvites,
   presentations,
   presentationrecordings,
@@ -25,7 +26,7 @@ import {
   publishParticipantLeft,
   publishPresentationStatus,
 } from "./realtime";
-import { transcribeAudio, translateText } from "./captions";
+import { summarizeChat, transcribeAudio, translateText } from "./captions";
 import { closeRoom, getEgressInfo, normalizeS3Key, startRoomEgress } from "./livekit";
 import { presignGet, storageConfigured } from "../storage/s3";
 import { EngineError } from "../engine/errors";
@@ -276,7 +277,18 @@ export async function registerRecording(
       .from(presentationrecordings)
       .where(eq(presentationrecordings.egressid, input.egressid))
       .limit(1);
-    if (existing) return existing;
+    if (existing) {
+      // A later pull/webhook may carry the FINAL duration (the first register can
+      // land before egress reports it → 0). Backfill it without creating a dup.
+      if (input.durationms && input.durationms > 0 && !existing.durationms) {
+        await db
+          .update(presentationrecordings)
+          .set({ durationms: input.durationms })
+          .where(eq(presentationrecordings.id, existing.id));
+        return { ...existing, durationms: input.durationms };
+      }
+      return existing;
+    }
   }
 
   const id = uuidv7();
@@ -315,25 +327,48 @@ export async function egressStatusFor(
 export async function getReplay(
   presentationid: string,
   viewerid: string | null,
-): Promise<{ recording: { id: string; durationms: number | null; createdat: Date }; playbackUrl: string | null }> {
+): Promise<{
+  status: "ready" | "processing" | "none";
+  playbackUrl: string | null;
+  recording?: { id: string; durationms: number | null; createdat: Date };
+}> {
   await assertCanViewPresentation(presentationid, viewerid);
   const db = getDb();
   if (!db) throw new EngineError("db_unavailable", 503);
-  const [rec] = await db
-    .select()
-    .from(presentationrecordings)
-    .where(
-      and(
-        eq(presentationrecordings.presentationid, presentationid),
-        eq(presentationrecordings.status, "ready"),
-        isNull(presentationrecordings.deletedat),
-      ),
-    )
-    .orderBy(desc(presentationrecordings.createdat))
-    .limit(1);
-  if (!rec) throw new EngineError("recording_not_found", 404);
-  const playbackUrl = storageConfigured() ? await presignGet(rec.mediaurl).catch(() => null) : null;
-  return { recording: { id: rec.id, durationms: rec.durationms, createdat: rec.createdat }, playbackUrl };
+
+  const findReady = async () =>
+    (
+      await db
+        .select()
+        .from(presentationrecordings)
+        .where(
+          and(
+            eq(presentationrecordings.presentationid, presentationid),
+            eq(presentationrecordings.status, "ready"),
+            isNull(presentationrecordings.deletedat),
+          ),
+        )
+        .orderBy(desc(presentationrecordings.createdat))
+        .limit(1)
+    )[0];
+
+  let rec = await findReady();
+  if (!rec) {
+    // Egress is likely still finalizing/uploading — pull it now (registers the file
+    // once LiveKit reports COMPLETE), then re-check. Idempotent + best-effort.
+    await finalizeRecordingFromEgress(presentationid).catch(() => {});
+    rec = await findReady();
+  }
+  if (rec) {
+    const playbackUrl = storageConfigured() ? await presignGet(rec.mediaurl).catch(() => null) : null;
+    return { status: "ready", playbackUrl, recording: { id: rec.id, durationms: rec.durationms, createdat: rec.createdat } };
+  }
+
+  // No recording yet. If egress started and hasn't failed, one is still coming
+  // (client shows "Processing…" and polls); otherwise there's genuinely none.
+  const p = await loadPresentation(presentationid);
+  const stillComing = Boolean(p.egressid) && p.egressstatus !== "failed";
+  return { status: stillComing ? "processing" : "none", playbackUrl: null };
 }
 
 /** Host deletes a recording — soft delete; no longer playable, downloadable, or listed. */
@@ -430,8 +465,43 @@ export async function sendChat(
   text: string,
 ): Promise<void> {
   await assertCanViewPresentation(presentationid, sender.userid);
-  if (!text.trim()) return;
-  await publishChat(presentationid, { fromuserid: sender.userid, fromname: sender.name, text: text.trim() });
+  const body = text.trim();
+  if (!body) return;
+  // FR-028 — persist for the replay transcript/summary (best-effort), then publish live.
+  const db = getDb();
+  if (db) {
+    await db
+      .insert(presentationchatmessages)
+      .values({ id: uuidv7(), presentationid, userid: sender.userid, name: sender.name, text: body })
+      .catch(() => {});
+  }
+  await publishChat(presentationid, { fromuserid: sender.userid, fromname: sender.name, text: body });
+}
+
+/** FR-028 — the saved chat transcript for a presentation (access-scoped), oldest first. */
+export async function listPresentationChat(
+  presentationid: string,
+  viewerid: string | null,
+): Promise<Array<{ name: string; text: string; createdat: string }>> {
+  await assertCanViewPresentation(presentationid, viewerid);
+  const db = getDb();
+  if (!db) return [];
+  const rows = await db
+    .select({ name: presentationchatmessages.name, text: presentationchatmessages.text, createdat: presentationchatmessages.createdat })
+    .from(presentationchatmessages)
+    .where(eq(presentationchatmessages.presentationid, presentationid))
+    .orderBy(presentationchatmessages.createdat);
+  return rows.map((r) => ({ name: r.name, text: r.text, createdat: r.createdat.toISOString() }));
+}
+
+/** FR-028 — chat transcript + a short AI recap for the replay screen (access-scoped). */
+export async function summarizePresentationChat(
+  presentationid: string,
+  viewerid: string | null,
+): Promise<{ summary: string | null; count: number; messages: Array<{ name: string; text: string; createdat: string }> }> {
+  const messages = await listPresentationChat(presentationid, viewerid);
+  const summary = messages.length ? await summarizeChat(messages).catch(() => null) : null;
+  return { summary, count: messages.length, messages };
 }
 
 async function findActiveAttendee(
