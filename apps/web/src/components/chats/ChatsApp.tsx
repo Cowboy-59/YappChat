@@ -51,6 +51,8 @@ function Inner() {
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [myRole, setMyRole] = useState<string | null>(null);
+  // Ctrl + mouse-wheel zoom level for the message area only (0.6–2.0).
+  const [zoom, setZoom] = useState(1);
   // FR-015 — right-click delete menu: which message + where to anchor it.
   const [msgMenu, setMsgMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const [input, setInput] = useState("");
@@ -183,6 +185,40 @@ function Inner() {
       setMessages((prev) => prev.map((x) => (x.id === id ? { ...x, content: null, media: [], deletedat: message.deletedat ?? new Date().toISOString() } : x)));
     }
   }, []);
+
+  // Restore the saved zoom level once on mount.
+  useEffect(() => {
+    try {
+      const saved = parseFloat(localStorage.getItem("chatZoom") ?? "");
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot restore from localStorage
+      if (saved >= 0.6 && saved <= 2) setZoom(saved);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  // Ctrl + mouse-wheel zooms ONLY the message area, not the whole page. React's
+  // onWheel is passive so preventDefault wouldn't stop the browser page zoom —
+  // attach a native non-passive listener on the scroll container instead.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      setZoom((z) => {
+        const next = Math.min(2, Math.max(0.6, Math.round((z + (e.deltaY < 0 ? 0.1 : -0.1)) * 10) / 10));
+        try {
+          localStorage.setItem("chatZoom", String(next));
+        } catch {
+          /* ignore */
+        }
+        return next;
+      });
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [activeConv]);
 
   // Dismiss the context menu on any outside click / Escape.
   useEffect(() => {
@@ -361,7 +397,8 @@ function Inner() {
         ) : (
           <>
             <div className="border-b border-border px-4 py-3 text-sm font-semibold text-foreground">{activeName || "Chat"}</div>
-            <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-4">
+            <div ref={scrollRef} className="flex-1 overflow-y-auto p-4">
+              <div className="space-y-3" style={{ zoom }}>
               {messages.map((m) => {
                 if (m.authorid === SYSTEM_AUTHOR) {
                   return (
@@ -435,6 +472,7 @@ function Inner() {
                 );
               })}
               {messages.length === 0 && <p className="text-sm text-muted-foreground">No messages yet.</p>}
+              </div>
             </div>
 
             {msgMenu && (

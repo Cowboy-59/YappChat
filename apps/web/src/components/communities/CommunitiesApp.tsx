@@ -503,8 +503,45 @@ function Inner({ currentUserId }: { currentUserId: string }) {
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const convRef = useRef<string | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  // Ctrl + mouse-wheel zoom level for the message area only (0.6–2.0).
+  const [zoom, setZoom] = useState(1);
   useEffect(() => {
     convRef.current = space?.conversationid ?? null;
+  }, [space]);
+
+  // Restore the saved zoom level once on mount (shared with the chats view).
+  useEffect(() => {
+    try {
+      const saved = parseFloat(localStorage.getItem("chatZoom") ?? "");
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot restore from localStorage
+      if (saved >= 0.6 && saved <= 2) setZoom(saved);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  // Ctrl + mouse-wheel zooms ONLY the message area, not the whole page. React's
+  // onWheel is passive, so attach a native non-passive listener to preventDefault
+  // the browser page zoom.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      setZoom((z) => {
+        const next = Math.min(2, Math.max(0.6, Math.round((z + (e.deltaY < 0 ? 0.1 : -0.1)) * 10) / 10));
+        try {
+          localStorage.setItem("chatZoom", String(next));
+        } catch {
+          /* ignore */
+        }
+        return next;
+      });
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
   }, [space]);
 
   const loadCommunities = useCallback(async () => {
@@ -756,7 +793,10 @@ function Inner({ currentUserId }: { currentUserId: string }) {
         </div>
       </div>
 
-      <section className="flex flex-1 flex-col rounded-xl border border-border bg-card">
+      <section
+        className="flex flex-1 flex-col rounded-xl border border-border"
+        style={{ backgroundColor: "color-mix(in srgb, hsl(var(--card)), #fff 14%)" }}
+      >
         {creating ? (
           <div className="p-4">
             <CreateCommunityForm
@@ -815,7 +855,8 @@ function Inner({ currentUserId }: { currentUserId: string }) {
               <div className="border-b border-border px-4 py-2 text-xs text-muted-foreground">{space.topic}</div>
             )}
             <div
-              className={`relative flex-1 space-y-3 overflow-y-auto p-4 ${dragOver ? "ring-2 ring-inset ring-primary" : ""}`}
+              ref={scrollRef}
+              className={`relative flex-1 overflow-y-auto p-4 ${dragOver ? "ring-2 ring-inset ring-primary" : ""}`}
               onDragOver={(e) => {
                 e.preventDefault();
                 setDragOver(true);
@@ -832,6 +873,7 @@ function Inner({ currentUserId }: { currentUserId: string }) {
                   Drop files to attach
                 </div>
               )}
+              <div className="space-y-3" style={{ zoom }}>
               {messages.map((m) => {
                 const mine = m.authorid === currentUserId;
                 const isBot = m.authorid === AI_ASSISTANT_AUTHOR_ID;
@@ -886,7 +928,7 @@ function Inner({ currentUserId }: { currentUserId: string }) {
                     )}
                     {m.content && (
                       <span
-                        className={`inline-block max-w-[75%] whitespace-pre-wrap break-words rounded-2xl px-3 py-1.5 text-sm ${mine ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"}`}
+                        className={`inline-block max-w-[75%] whitespace-pre-wrap break-words rounded-2xl px-3 py-1.5 text-sm ${mine ? "bg-green-200 text-slate-950 dark:bg-green-800 dark:text-green-50" : isBot ? "bg-muted text-foreground" : "bg-[color-mix(in_srgb,var(--color-cyan-500),#fff_20%)] text-slate-950"}`}
                       >
                         {linkify(m.content)}
                       </span>
@@ -895,6 +937,7 @@ function Inner({ currentUserId }: { currentUserId: string }) {
                 );
               })}
               {messages.length === 0 && <p className="text-sm text-muted-foreground">No messages yet.</p>}
+              </div>
             </div>
             <div className="relative border-t border-border p-3">
               {showEmoji && <EmojiPicker onPick={insertEmoji} />}
