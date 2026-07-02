@@ -42,6 +42,10 @@ export function PresentationRoom({
   const [handRaised, setHandRaised] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [captioning, setCaptioning] = useState(false);
+  // Visible LiveKit media diagnostics (so failures aren't silent).
+  const [mediaStatus, setMediaStatus] = useState<string>("");
+  const [mediaError, setMediaError] = useState<string | null>(null);
+  const [peers, setPeers] = useState(0);
   const [queue, setQueue] = useState<Array<{ attendeeid: string; userid: string | null; guestname: string | null }>>([]);
 
   const roomRef = useRef<Room | null>(null);
@@ -122,7 +126,26 @@ export function PresentationRoom({
               /* ignore malformed */
             }
           });
-          await room.connect(data.livekit.url, data.livekit.token);
+          const syncPeers = () => setPeers(room.remoteParticipants.size + (room.localParticipant ? 1 : 0));
+          room.on(RoomEvent.ConnectionStateChanged, (s) => setMediaStatus(String(s)));
+          room.on(RoomEvent.ParticipantConnected, syncPeers);
+          room.on(RoomEvent.ParticipantDisconnected, syncPeers);
+          room.on(RoomEvent.Disconnected, (reason) => {
+            setMediaStatus("disconnected");
+            if (reason != null) setMediaError(`LiveKit disconnected (${String(reason)})`);
+          });
+          // Media connect is isolated: a failure surfaces a banner but keeps the
+          // room usable (chat/captions), rather than blanking the whole page.
+          try {
+            setMediaStatus("connecting");
+            await room.connect(data.livekit.url, data.livekit.token);
+            setMediaStatus("connected");
+            setMediaError(null);
+            syncPeers();
+          } catch (mErr) {
+            setMediaStatus("failed");
+            setMediaError(`LiveKit connect failed: ${(mErr as Error).message}`);
+          }
         }
       } catch (err) {
         setError((err as Error).message);
@@ -236,6 +259,14 @@ export function PresentationRoom({
   async function hostAction(path: "start" | "end") {
     await fetch(`/api/presentations/${presentationId}/${path}`, { method: "POST", credentials: "include" }).catch(() => null);
     setJoined((j) => (j ? { ...j, presentation: { ...j.presentation, status: path === "start" ? "live" : "ended" } } : j));
+    if (path === "end") {
+      // Stop all capture: caption mic (recorder → its stream) + published screen/mic (room).
+      recorderRef.current?.stop();
+      recorderRef.current = null;
+      setCaptioning(false);
+      setSharing(false);
+      roomRef.current?.disconnect();
+    }
   }
 
   async function resolveHand(attendeeid: string) {
@@ -302,6 +333,18 @@ export function PresentationRoom({
               {!joined?.livekit && (
                 <div className="absolute inset-0 flex items-center justify-center text-sm text-white/70">
                   Live media unavailable (LiveKit not configured)
+                </div>
+              )}
+              {joined?.livekit && (
+                <div className="absolute left-2 top-2 max-w-[90%] rounded bg-black/70 px-2 py-1 text-[11px] text-white">
+                  {mediaError ? (
+                    <span className="text-red-300">{mediaError}</span>
+                  ) : (
+                    <span>
+                      Media: {mediaStatus || "…"}
+                      {mediaStatus === "connected" ? ` · ${peers} in room` : ""}
+                    </span>
+                  )}
                 </div>
               )}
               {/* Caption overlay: base line + per-viewer translation beneath. */}
