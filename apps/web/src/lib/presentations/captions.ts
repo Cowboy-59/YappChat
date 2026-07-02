@@ -41,7 +41,11 @@ export async function transcribeAudio(audio: Blob, languageHint?: string): Promi
     body: form,
     signal: AbortSignal.timeout(15_000),
   });
-  if (!res.ok) throw new EngineError("stt_failed", 502, `groq stt ${res.status}`);
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    console.error("[captions] GROQ STT failed", res.status, body.slice(0, 400));
+    throw new EngineError("stt_failed", 502, `groq stt ${res.status}: ${body.slice(0, 200)}`);
+  }
   const data = (await res.json()) as { text?: string };
   return (data.text ?? "").trim();
 }

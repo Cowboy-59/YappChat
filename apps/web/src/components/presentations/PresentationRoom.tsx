@@ -46,11 +46,14 @@ export function PresentationRoom({
   const [mediaStatus, setMediaStatus] = useState<string>("");
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [peers, setPeers] = useState(0);
+  const [captionError, setCaptionError] = useState<string | null>(null);
   const [queue, setQueue] = useState<Array<{ attendeeid: string; userid: string | null; guestname: string | null }>>([]);
 
   const roomRef = useRef<Room | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
+  const capStreamRef = useRef<MediaStream | null>(null);
+  const capTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const seq = useRef(0);
 
   const isHost = joined?.attendee.role === "host";
@@ -160,7 +163,9 @@ export function PresentationRoom({
     if (signedIn) void join();
     return () => {
       roomRef.current?.disconnect();
+      if (capTimerRef.current) clearTimeout(capTimerRef.current);
       recorderRef.current?.stop();
+      capStreamRef.current?.getTracks().forEach((t) => t.stop());
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -199,40 +204,77 @@ export function PresentationRoom({
     if (pub?.track && videoRef.current) pub.track.attach(videoRef.current);
   }
 
-  // Host caption capture: chunk mic audio → GROQ STT → broadcast the line.
+  function stopCaptions() {
+    setCaptioning(false);
+    if (capTimerRef.current) clearTimeout(capTimerRef.current);
+    capTimerRef.current = null;
+    recorderRef.current?.stop();
+    recorderRef.current = null;
+    capStreamRef.current?.getTracks().forEach((t) => t.stop());
+    capStreamRef.current = null;
+  }
+
+  // Host caption capture: record discrete ~4s clips → GROQ STT → broadcast the
+  // line. Each clip is a COMPLETE webm file (a single continuous MediaRecorder
+  // only writes the container header into its first chunk, so later fragments
+  // can't be decoded — which is why nothing transcribed before).
   async function toggleCaptions() {
     if (captioning) {
-      recorderRef.current?.stop();
-      setCaptioning(false);
+      stopCaptions();
       return;
     }
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const rec = new MediaRecorder(stream);
-    recorderRef.current = rec;
-    rec.ondataavailable = async (e) => {
-      if (e.data.size < 1200) return;
-      const body = new FormData();
-      body.append("audio", e.data, "chunk.webm");
-      const r = await fetch(`/api/presentations/${presentationId}/captions/transcribe`, {
-        method: "POST",
-        credentials: "include",
-        body,
-      }).catch(() => null);
-      if (!r?.ok) return;
-      const { text } = (await r.json()) as { text: string };
-      if (text) {
-        addCaption(text, spoken);
-        publishData({ type: "caption", base: text, lang: spoken });
-      }
-    };
-    rec.start();
-    // emit a chunk every ~4s
-    const iv = setInterval(() => rec.state === "recording" && rec.requestData(), 4000);
-    rec.onstop = () => {
-      clearInterval(iv);
-      stream.getTracks().forEach((t) => t.stop());
-    };
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      setCaptionError("microphone permission denied");
+      return;
+    }
+    capStreamRef.current = stream;
+    setCaptionError(null);
     setCaptioning(true);
+
+    const recordClip = () => {
+      const active = capStreamRef.current;
+      if (!active) return;
+      const rec = new MediaRecorder(active);
+      recorderRef.current = rec;
+      const parts: Blob[] = [];
+      rec.ondataavailable = (e) => {
+        if (e.data.size) parts.push(e.data);
+      };
+      rec.onstop = async () => {
+        const blob = new Blob(parts, { type: rec.mimeType || "audio/webm" });
+        if (blob.size > 1200) {
+          try {
+            const body = new FormData();
+            body.append("audio", blob, "chunk.webm");
+            const r = await fetch(`/api/presentations/${presentationId}/captions/transcribe`, {
+              method: "POST",
+              credentials: "include",
+              body,
+            });
+            if (r.ok) {
+              const { text } = (await r.json()) as { text: string };
+              if (text) {
+                setCaptionError(null);
+                addCaption(text, spoken);
+                publishData({ type: "caption", base: text, lang: spoken });
+              }
+            } else {
+              const b = (await r.json().catch(() => ({}))) as { error?: string; detail?: string };
+              setCaptionError(`captions: ${b.detail ?? b.error ?? `HTTP ${r.status}`}`);
+            }
+          } catch (e) {
+            setCaptionError(`captions: ${(e as Error).message}`);
+          }
+        }
+        if (capStreamRef.current) recordClip(); // loop while captions are on
+      };
+      rec.start();
+      capTimerRef.current = setTimeout(() => rec.state === "recording" && rec.stop(), 4000);
+    };
+    recordClip();
   }
 
   async function sendChat() {
@@ -264,10 +306,8 @@ export function PresentationRoom({
     await fetch(`/api/presentations/${presentationId}/${path}`, { method: "POST", credentials: "include" }).catch(() => null);
     setJoined((j) => (j ? { ...j, presentation: { ...j.presentation, status: path === "start" ? "live" : "ended" } } : j));
     if (path === "end") {
-      // Stop all capture: caption mic (recorder → its stream) + published screen/mic (room).
-      recorderRef.current?.stop();
-      recorderRef.current = null;
-      setCaptioning(false);
+      // Stop all capture: caption mic + published screen/mic (room).
+      stopCaptions();
       setSharing(false);
       roomRef.current?.disconnect();
     }
@@ -349,6 +389,11 @@ export function PresentationRoom({
                       {mediaStatus === "connected" ? ` · ${peers} in room` : ""}
                     </span>
                   )}
+                </div>
+              )}
+              {captionError && (
+                <div className="absolute left-2 top-9 max-w-[90%] rounded bg-red-900/80 px-2 py-1 text-[11px] text-red-100">
+                  {captionError}
                 </div>
               )}
               {/* Caption overlay: base line + per-viewer translation beneath. */}
