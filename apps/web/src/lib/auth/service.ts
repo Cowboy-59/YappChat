@@ -662,7 +662,7 @@ export async function requestEmailVerification(userid: string, email: string): P
 export async function consumeEmailVerification(
   token: string,
   ctx: { ip?: string | null },
-): Promise<void> {
+): Promise<{ userid: string }> {
   const db = getDb();
   if (!db) throw new AuthError("db_unavailable", 503);
 
@@ -684,6 +684,7 @@ export async function consumeEmailVerification(
       .where(eq(emailverificationtokens.id, row.id));
   });
   await writeAudit({ eventtype: "email_verify", userid: row.userid, ip: ctx.ip });
+  return { userid: row.userid };
 }
 
 // ── Magic-link / email-OTP (T003) ────────────────────────────────────────────

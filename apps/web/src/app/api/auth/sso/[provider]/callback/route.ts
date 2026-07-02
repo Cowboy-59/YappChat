@@ -8,6 +8,7 @@ import {
   linkSsoIdentity,
 } from "@/lib/auth/service";
 import { getSessionUser } from "@/lib/auth/session";
+import { autoAcceptContactInvitesForUser } from "@/lib/contacts/service";
 import { resolveReturnPath } from "@/lib/auth/return-url";
 import { getSiteUrl } from "@/lib/site";
 
@@ -75,6 +76,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ provider
       name: claims.name,
     });
     await issueSessionForUser(userid);
+    // FR-024 — SSO accounts are verified-on-provision: auto-accept any pending
+    // invites addressed to this email (and notify the inviters). Best-effort.
+    await autoAcceptContactInvitesForUser(userid).catch(() => {});
     return NextResponse.redirect(new URL(resolveReturnPath(returnTo, { isSystemStaff: false }), base));
   } catch (err) {
     if (err instanceof AuthError && err.code === "sso_account_exists") {

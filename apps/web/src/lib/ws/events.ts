@@ -73,6 +73,8 @@ export const WSEventType = {
   TypingStop: "message.typing_stop",
   // spec 001 FR-015 — soft-delete ("unsend for everyone"); conversation:{id} scope.
   MessageDeleted: "message.deleted",
+  // spec 018 FR-025 — an invite/request you sent was accepted; user:{inviterid} scope.
+  ContactAccepted: "contact.accepted",
   // spec 071 (Presentation) — routed on the `videoroom:{presentationid}` scope.
   VideoroomParticipantJoined: "videoroom.participant_joined",
   VideoroomParticipantLeft: "videoroom.participant_left",
