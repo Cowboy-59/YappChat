@@ -29,7 +29,7 @@ import {
 } from "./realtime";
 import { summarizeChat, transcribeAudio, translateText } from "./captions";
 import { closeRoom, getEgressInfo, normalizeS3Key, startRoomEgress } from "./livekit";
-import { presignGet, storageConfigured } from "../storage/s3";
+import { presignGet, presignShare, storageConfigured } from "../storage/s3";
 import { EngineError } from "../engine/errors";
 
 /**
@@ -394,6 +394,98 @@ export async function getReplay(
   const p = await loadPresentation(presentationid);
   const stillComing = Boolean(p.egressid) && p.egressstatus !== "failed";
   return { status: stillComing ? "processing" : "none", playbackUrl: null };
+}
+
+/** ms → WebVTT timestamp "HH:MM:SS.mmm". */
+function vttTime(ms: number): string {
+  const t = Math.max(0, Math.floor(ms));
+  const h = Math.floor(t / 3_600_000);
+  const m = Math.floor((t % 3_600_000) / 60_000);
+  const s = Math.floor((t % 60_000) / 1000);
+  const mm = t % 1000;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}.${String(mm).padStart(3, "0")}`;
+}
+
+/**
+ * FR-028/029 — build a WebVTT subtitle track for a recording in the requested
+ * language. The base spoken language uses the saved caption text as-is; other
+ * languages translate each line (GROQ) so the replay viewer can switch languages.
+ * Access-scoped like the replay.
+ */
+export async function buildCaptionsVtt(presentationid: string, viewerid: string | null, lang: string): Promise<string> {
+  const p = await assertCanViewPresentation(presentationid, viewerid);
+  const db = getDb();
+  if (!db) return "WEBVTT\n";
+  const rows = await db
+    .select({ text: presentationcaptions.text, offsetms: presentationcaptions.offsetms, language: presentationcaptions.language })
+    .from(presentationcaptions)
+    .where(eq(presentationcaptions.presentationid, presentationid))
+    .orderBy(presentationcaptions.createdat);
+  if (rows.length === 0) return "WEBVTT\n";
+
+  // Resolve cue text in the target language (dedupe identical lines before translating).
+  const base = p.spokenlanguage;
+  let texts = rows.map((r) => r.text);
+  if (lang !== base) {
+    const unique = [...new Set(texts)];
+    const map = new Map<string, string>();
+    await Promise.all(
+      unique.map(async (t) => {
+        map.set(t, await translateText(t, base, lang).catch(() => t));
+      }),
+    );
+    texts = texts.map((t) => map.get(t) ?? t);
+  }
+
+  // Cue timings: use offsetms when present; each cue ends at the next cue's start
+  // (or +4s for the last). Fall back to a steady 4s cadence when offsets are absent.
+  const DEFAULT_MS = 4000;
+  const starts = rows.map((r, i) => (r.offsetms != null ? r.offsetms : i * DEFAULT_MS));
+  const lines = ["WEBVTT", ""];
+  for (let i = 0; i < rows.length; i++) {
+    const start = starts[i];
+    const end = i + 1 < rows.length && starts[i + 1] > start ? starts[i + 1] : start + DEFAULT_MS;
+    const text = texts[i].replace(/-->/g, "→").replace(/\r?\n/g, " ").trim();
+    lines.push(`${vttTime(start)} --> ${vttTime(end)}`, text, "");
+  }
+  return lines.join("\n");
+}
+
+/** Safe-ish filename from a title (for the shared download's Content-Disposition). */
+function recordingFileName(title: string, createdat: Date): string {
+  const slug = title.trim().replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "recording";
+  const date = createdat.toISOString().slice(0, 10);
+  return `${slug}-${date}.mp4`;
+}
+
+/**
+ * A long-lived (7-day) shareable link to the recording's S3 object — for sending
+ * to someone or pasting into another app (e.g. wxKanban). Access-scoped exactly
+ * like the replay; also returns the bare S3 key for internal reference.
+ */
+export async function getRecordingShareLink(
+  presentationid: string,
+  viewerid: string | null,
+): Promise<{ url: string | null; key: string | null; filename: string | null }> {
+  const p = await assertCanViewPresentation(presentationid, viewerid);
+  const db = getDb();
+  if (!db) return { url: null, key: null, filename: null };
+  const [rec] = await db
+    .select()
+    .from(presentationrecordings)
+    .where(
+      and(
+        eq(presentationrecordings.presentationid, presentationid),
+        eq(presentationrecordings.status, "ready"),
+        isNull(presentationrecordings.deletedat),
+      ),
+    )
+    .orderBy(desc(presentationrecordings.createdat))
+    .limit(1);
+  if (!rec) return { url: null, key: null, filename: null };
+  const filename = recordingFileName(p.title, rec.createdat);
+  const url = storageConfigured() ? await presignShare(rec.mediaurl, { downloadName: filename }).catch(() => null) : null;
+  return { url, key: rec.mediaurl, filename };
 }
 
 /** Host deletes a recording — soft delete; no longer playable, downloadable, or listed. */

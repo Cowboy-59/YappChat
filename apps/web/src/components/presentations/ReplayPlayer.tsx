@@ -1,11 +1,41 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { SUPPORTED_LANGUAGES } from "@/lib/account/languages";
 
 /** Spec 071 T009 — access-scoped replay player (FR-019). */
 export function ReplayPlayer({ presentationId }: { presentationId: string }) {
   const [url, setUrl] = useState<string | null>(null);
   const [state, setState] = useState<"loading" | "processing" | "ready" | "none">("loading");
+  const [shareBusy, setShareBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  // A 7-day shareable/download link to the S3 recording (for sending or pasting elsewhere).
+  async function fetchShareUrl(): Promise<string | null> {
+    const r = await fetch(`/api/presentations/${presentationId}/recording/share`, { credentials: "include" });
+    if (!r.ok) return null;
+    const d = (await r.json()) as { url: string | null };
+    return d.url;
+  }
+  async function copyLink() {
+    setShareBusy(true);
+    const u = await fetchShareUrl();
+    setShareBusy(false);
+    if (!u) return;
+    try {
+      await navigator.clipboard.writeText(u);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      window.prompt("Copy this video link:", u);
+    }
+  }
+  async function download() {
+    setShareBusy(true);
+    const u = await fetchShareUrl();
+    setShareBusy(false);
+    if (u) window.open(u, "_blank");
+  }
 
   useEffect(() => {
     let active = true;
@@ -64,22 +94,56 @@ export function ReplayPlayer({ presentationId }: { presentationId: string }) {
   // Seek to the first frame on load so the player shows a still preview (poster)
   // instead of a black box — visibly "ready to play".
   return (
-    <video
-      src={url}
-      controls
-      playsInline
-      preload="metadata"
-      onLoadedMetadata={(e) => {
-        const v = e.currentTarget;
-        if (v.currentTime === 0) {
-          try {
-            v.currentTime = 0.1;
-          } catch {
-            /* some browsers disallow seeking before play; harmless */
+    <div className="space-y-2">
+      <video
+        src={url}
+        controls
+        playsInline
+        preload="metadata"
+        onLoadedMetadata={(e) => {
+          const v = e.currentTarget;
+          if (v.currentTime === 0) {
+            try {
+              v.currentTime = 0.1;
+            } catch {
+              /* some browsers disallow seeking before play; harmless */
+            }
           }
-        }
-      }}
-      className="aspect-video w-full rounded-xl border border-border bg-black"
-    />
+        }}
+        className="aspect-video w-full rounded-xl border border-border bg-black"
+      >
+        {/* Soft captions built from the saved transcript. Default English; the
+            player's CC menu switches language (others translate on demand). */}
+        {SUPPORTED_LANGUAGES.map((l) => (
+          <track
+            key={l.code}
+            kind="subtitles"
+            srcLang={l.code}
+            label={l.label}
+            default={l.code === "en"}
+            src={`/api/presentations/${presentationId}/captions/vtt?lang=${l.code}`}
+          />
+        ))}
+      </video>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          onClick={copyLink}
+          disabled={shareBusy}
+          className="inline-flex min-h-[32px] items-center rounded-lg border border-border px-3 text-xs font-semibold hover:bg-muted disabled:opacity-50"
+          title="Copy a 7-day shareable link to the video (for email, wxKanban, etc.)"
+        >
+          {copied ? "Link copied ✓" : shareBusy ? "Working…" : "🔗 Copy video link"}
+        </button>
+        <button
+          onClick={download}
+          disabled={shareBusy}
+          className="inline-flex min-h-[32px] items-center rounded-lg border border-border px-3 text-xs font-semibold hover:bg-muted disabled:opacity-50"
+          title="Download the MP4"
+        >
+          ⬇ Download
+        </button>
+        <span className="text-[11px] text-muted-foreground">Link works for 7 days.</span>
+      </div>
+    </div>
   );
 }
