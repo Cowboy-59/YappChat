@@ -81,11 +81,17 @@ async function sessionContext(): Promise<{ ip: string | null; useragent: string 
   }
 }
 
-/** Create a session + refresh token (new family unless continuing one), set cookies. */
+/**
+ * Create a session + refresh token (new family unless continuing one), set cookies.
+ * Returns both the new session id AND the raw (pre-hash) opaque session token — the
+ * same plaintext written to the `yc_session` cookie; the DB stores only its hash.
+ * Most callers only need the id; the wxKanban Cockpit consumer seam also needs the
+ * raw token to hand to an external trusted app (see issueSessionForUserWithToken).
+ */
 async function issueSession(
   userid: string,
   opts?: { familyid?: string; deviceid?: string | null },
-): Promise<string> {
+): Promise<{ sessionId: string; sessionToken: string }> {
   const db = getDb();
   if (!db) throw new AuthError("db_unavailable", 503);
 
@@ -123,12 +129,22 @@ async function issueSession(
   }
 
   await setAuthCookies(sessionToken, refreshToken);
-  return sessionId;
+  return { sessionId, sessionToken };
 }
 
 /** Establish a logged-in session for a user id (used by SSO sign-in). */
 export async function issueSessionForUser(userid: string): Promise<void> {
   await issueSession(userid);
+}
+
+/**
+ * wxKanban Cockpit community-help consumer seam. Establish a logged-in session for
+ * a user AND return the RAW opaque session token (also set as the `yc_session`
+ * cookie). The token lets an external trusted app carry the session cross-context.
+ */
+export async function issueSessionForUserWithToken(userid: string): Promise<string> {
+  const { sessionToken } = await issueSession(userid);
+  return sessionToken;
 }
 
 /**
@@ -177,6 +193,52 @@ export async function linkOrProvisionSso(input: {
   });
   await writeAudit({ eventtype: "signup", userid: userId, payload: { via: "sso", provider: input.provider } });
   return userId;
+}
+
+/**
+ * wxKanban Cockpit community-help consumer seam. Resolve a user BY EMAIL, creating
+ * the account if it does not yet exist. Unlike `linkOrProvisionSso` (which throws
+ * 409 when the email already belongs to an account), this is lookup-FIRST: an
+ * existing email returns that user. A brand-new email is provisioned exactly like
+ * `consumeMagicLink`'s signup-on-consume path — individual account + personal org
+ * + owner membership, email pre-verified (the trusted caller vouches for it).
+ */
+export async function provisionOrLookupUserByEmail(input: {
+  email: string;
+  displayName?: string | null;
+}): Promise<{ userid: string; created: boolean }> {
+  const db = getDb();
+  if (!db) throw new AuthError("db_unavailable", 503);
+
+  const email = normalizeEmail(input.email);
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    throw new AuthError("invalid_email", 400);
+  }
+
+  const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
+  if (existing) return { userid: existing.id, created: false };
+
+  const userId = uuidv7();
+  const orgId = uuidv7();
+  const displayname = input.displayName?.trim() || email.split("@")[0] || "New user";
+  await db.transaction(async (tx) => {
+    await tx.insert(users).values({
+      id: userId,
+      email,
+      displayname,
+      plan: "individual",
+      emailverifiedat: new Date(), // pre-verified: the trusted consumer vouches for the email
+    });
+    await tx.insert(orgs).values({
+      id: orgId,
+      name: `${displayname}'s Workspace`,
+      plantype: "individual",
+      seatlimit: 1,
+    });
+    await tx.insert(orgmemberships).values({ id: uuidv7(), userid: userId, orgid: orgId, role: "owner" });
+  });
+  await writeAudit({ eventtype: "signup", userid: userId, payload: { via: "wxkanban_consumer" } });
+  return { userid: userId, created: true };
 }
 
 /**
@@ -519,7 +581,7 @@ export async function refresh(ctx: { ip?: string | null }): Promise<void> {
     }
     // Grace: issue a fresh rotation in the same family, then collapse the family
     // to that one live session (one session row per physical device).
-    const graceSessionId = await issueSession(rt.userid, { familyid: rt.familyid });
+    const { sessionId: graceSessionId } = await issueSession(rt.userid, { familyid: rt.familyid });
     await revokeOtherFamilySessions(rt.familyid, graceSessionId);
     return;
   }

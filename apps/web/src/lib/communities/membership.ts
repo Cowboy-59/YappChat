@@ -133,6 +133,41 @@ async function isMember(db: Db, communityid: string, userid: string): Promise<bo
   return Boolean(m);
 }
 
+/**
+ * wxKanban Cockpit community-help consumer seam. GUARANTEE that a user is a member
+ * of a community AND of one specific space's conversation, independent of the
+ * community/space join policy — this deliberately does NOT go through
+ * `joinCommunity` (which would gate an approval/invite-only community). It inserts
+ * the `communitymembers` row (via the shared low-level `addMember`, which also
+ * syncs the non-strict spaces) and then admits the user to the TARGET space's
+ * conversation UNCONDITIONALLY, overriding any adminonly/corponly/stricter policy —
+ * the same override `redeemInvite` uses. Idempotent. Returns the space's
+ * conversationid so the caller can route the user straight into it.
+ */
+export async function ensureCommunityAndSpaceMember(
+  communityid: string,
+  spaceid: string,
+  userid: string,
+): Promise<{ conversationid: string }> {
+  const db = getDb();
+  if (!db) throw new EngineError("db_unavailable", 503);
+
+  const [community] = await db.select({ id: communities.id }).from(communities).where(eq(communities.id, communityid)).limit(1);
+  if (!community) throw new EngineError("community_not_found", 404);
+
+  const [space] = await db
+    .select({ conversationid: spaces.conversationid })
+    .from(spaces)
+    .where(and(eq(spaces.id, spaceid), eq(spaces.communityid, communityid)))
+    .limit(1);
+  if (!space) throw new EngineError("space_not_found", 404);
+
+  await addMember(db, communityid, userid, "member");
+  await addConversationMember({ conversationid: space.conversationid, userid });
+  await audit(db, communityid, userid, "member_joined", { via: "wxkanban_consumer", spaceid });
+  return { conversationid: space.conversationid };
+}
+
 export type JoinResult = { status: "member" | "pending"; already?: boolean };
 
 /** Join (or request to join, or be rejected) per the effective community policy. */
