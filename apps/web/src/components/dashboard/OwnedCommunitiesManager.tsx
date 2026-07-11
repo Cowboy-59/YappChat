@@ -355,9 +355,13 @@ function SpaceRow({
         </label>
         {/* Use AI in this space — enable/configure on edit (FR-019). */}
         <SpaceAiEditor communityId={communityId} spaceId={space.id} />
-        {/* Per-space invite link (FR-020) — admits the clicker directly into this
-            space, overriding its entry policy. */}
-        <SpaceInviteButton communityId={communityId} spaceId={space.id} />
+        {/* Per-space invite link (FR-020/FR-021) — admits the clicker directly into
+            this space, overriding its entry policy. Reusable unless admin/corp-only. */}
+        <SpaceInviteButton
+          communityId={communityId}
+          spaceId={space.id}
+          reusable={!space.adminonly && !space.corponly}
+        />
         <div className="flex items-center gap-2">
           <button onClick={save} disabled={busy} className={primary}>
             {busy ? "…" : "Save"}
@@ -418,41 +422,101 @@ function SpaceRow({
   );
 }
 
-/** Spec 017 FR-020 — mint a shareable single-use link that admits the clicker
- *  directly into THIS space (overriding its strict policy). Shows the full
- *  clickable URL (not a bare token) so it can be dropped straight into a chat. */
-function SpaceInviteButton({ communityId, spaceId }: { communityId: string; spaceId: string }) {
+// FR-021 — "uses" choices. Reusable options are hidden for admin/corp-only spaces
+// (the server rejects them there anyway). Value maps to the `maxuses` request field:
+// a number caps redemptions; `null` = unlimited; single-use omits it (default 1).
+type UsesChoice = { label: string; maxuses: number | null | undefined };
+const USES_CHOICES: UsesChoice[] = [
+  { label: "Single-use", maxuses: undefined },
+  { label: "25 uses", maxuses: 25 },
+  { label: "100 uses", maxuses: 100 },
+  { label: "Unlimited", maxuses: null },
+];
+
+type ActiveInvite = { id: string; maxuses: number | null; usecount: number; remaining: number | null; expiresat: string };
+
+function usesLabel(i: { maxuses: number | null; usecount: number; remaining: number | null }): string {
+  if (i.maxuses == null) return `Unlimited · ${i.usecount} used`;
+  if (i.maxuses === 1) return "Single-use";
+  return `${i.remaining ?? 0} of ${i.maxuses} left`;
+}
+
+/** Spec 017 FR-020/FR-021 — mint a shareable link that admits the clicker directly
+ *  into THIS space (overriding its strict policy). Single-use, or (FR-021) reusable
+ *  with a use cap for open/approval spaces. Shows the full clickable URL once, plus
+ *  a list of live links with remaining uses + Revoke. */
+function SpaceInviteButton({ communityId, spaceId, reusable }: { communityId: string; spaceId: string; reusable: boolean }) {
+  const base = `/api/communities/${communityId}/spaces/${spaceId}/invites`;
+  const [choice, setChoice] = useState(0); // index into USES_CHOICES (0 = single-use)
   const [link, setLink] = useState<{ url: string; expiresat: string } | null>(null);
+  const [invites, setInvites] = useState<ActiveInvite[]>([]);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  const loadInvites = useCallback(async () => {
+    const r = await fetch(base, { credentials: "include" });
+    if (r.ok) setInvites((await r.json()).invites ?? []);
+  }, [base]);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const r = await fetch(base, { credentials: "include" });
+      if (r.ok && !cancelled) setInvites((await r.json()).invites ?? []);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [base]);
+
   async function generate() {
     setBusy(true);
     try {
-      const r = await fetch(`/api/communities/${communityId}/spaces/${spaceId}/invites`, {
+      const maxuses = reusable ? USES_CHOICES[choice].maxuses : undefined;
+      const r = await fetch(base, {
         method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ ttlHours: 72 }),
+        body: JSON.stringify({ ttlHours: 72, ...(maxuses !== undefined ? { maxuses } : {}) }),
       });
       if (r.ok) {
         const { invite } = await r.json();
         setLink({ url: `${window.location.origin}/communities/join?token=${encodeURIComponent(invite.token)}`, expiresat: invite.expiresat });
         setCopied(false);
+        await loadInvites();
       }
     } finally {
       setBusy(false);
     }
   }
+
+  async function revoke(id: string) {
+    const r = await fetch(`/api/communities/${communityId}/invites/${id}/revoke`, { method: "POST", credentials: "include" });
+    if (r.ok) setInvites((prev) => prev.filter((i) => i.id !== id));
+  }
+
   return (
     <div className="space-y-1">
-      <button type="button" onClick={generate} disabled={busy} className={ghost}>
-        {busy ? "…" : "Generate invite link"}
-      </button>
+      <div className="flex items-center gap-2">
+        {reusable && (
+          <select className={`${field} w-auto`} value={choice} onChange={(e) => setChoice(Number(e.target.value))}>
+            {USES_CHOICES.map((c, i) => (
+              <option key={c.label} value={i}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        )}
+        <button type="button" onClick={generate} disabled={busy} className={ghost}>
+          {busy ? "…" : "Generate invite link"}
+        </button>
+      </div>
       {link && (
         <div className="space-y-1 rounded-lg border border-border p-2">
           <input readOnly className={field} value={link.url} onFocus={(e) => e.currentTarget.select()} />
           <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>Single-use · expires {new Date(link.expiresat).toLocaleString()}</span>
+            <span>
+              {reusable ? USES_CHOICES[choice].label : "Single-use"} · expires {new Date(link.expiresat).toLocaleString()}
+            </span>
             <button
               type="button"
               className="font-semibold text-primary hover:underline"
@@ -462,6 +526,20 @@ function SpaceInviteButton({ communityId, spaceId }: { communityId: string; spac
             </button>
           </div>
         </div>
+      )}
+      {invites.length > 0 && (
+        <ul className="space-y-1">
+          {invites.map((i) => (
+            <li key={i.id} className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span className="flex-1 truncate">
+                {usesLabel(i)} · expires {new Date(i.expiresat).toLocaleDateString()}
+              </span>
+              <button type="button" onClick={() => void revoke(i.id)} className="font-semibold text-destructive hover:underline">
+                Revoke
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

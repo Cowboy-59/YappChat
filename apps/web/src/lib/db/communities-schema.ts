@@ -139,12 +139,39 @@ export const communityinvites = ycSchema.table(
     tokenhash: text("tokenhash").notNull(), // sha-256 of the invite token; plaintext shown once
     createdby: uuid("createdby").notNull(),
     expiresat: timestamp("expiresat", { withTimezone: true }).notNull(),
+    // FR-021 — reusable links. NULL = unlimited; 1 = single-use (FR-020 default).
+    maxuses: integer("maxuses"),
+    usecount: integer("usecount").notNull().default(0),
+    // Repurposed by FR-021 as a "dead" marker: set when the cap is reached OR on
+    // revoke. NULL = still live (subject to expiry + remaining uses).
     usedat: timestamp("usedat", { withTimezone: true }),
     createdat: timestamp("createdat", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     uniqueIndex("communityinvites_tokenhash_key").on(t.tokenhash),
     index("communityinvites_spaceid_idx").on(t.spaceid),
+  ],
+);
+
+/**
+ * Spec 017 FR-021 — one row per person per reusable invite redemption. Logs who
+ * redeemed a shared link (single-use links never needed this); the unique
+ * `(inviteid, userid)` also backs the "already redeemed → no-op, don't burn a
+ * use" check in `redeemInvite`.
+ */
+export const communityinviteredemptions = ycSchema.table(
+  "communityinviteredemptions",
+  {
+    id: uuid("id").primaryKey(),
+    inviteid: uuid("inviteid")
+      .notNull()
+      .references(() => communityinvites.id, { onDelete: "cascade" }),
+    userid: uuid("userid").notNull(),
+    redeemedat: timestamp("redeemedat", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("communityinviteredemptions_invite_user_key").on(t.inviteid, t.userid),
+    index("communityinviteredemptions_inviteid_idx").on(t.inviteid),
   ],
 );
 
@@ -255,6 +282,7 @@ export type CommunityMemberRow = typeof communitymembers.$inferSelect;
 export type SpaceRow = typeof spaces.$inferSelect;
 export type JoinRequestRow = typeof joinrequests.$inferSelect;
 export type CommunityInviteRow = typeof communityinvites.$inferSelect;
+export type CommunityInviteRedemptionRow = typeof communityinviteredemptions.$inferSelect;
 export type SpaceAiConfigRow = typeof spaceaiconfig.$inferSelect;
 export type SpaceAiSourceRow = typeof spaceaisources.$inferSelect;
 export type SpaceAiChunkRow = typeof spaceaichunks.$inferSelect;
