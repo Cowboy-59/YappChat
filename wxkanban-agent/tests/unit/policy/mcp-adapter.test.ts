@@ -140,6 +140,31 @@ describe("mcp-adapter — inert tools (registered in policy, handler pending par
       expect(result.allowed).toBe(true);
     }
   });
+
+  // wxConversion + wxConversionScope are Design-gated like the CLI surface.
+  it("project.wxconversion allowed in Design", async () => {
+    const db = stubDb({ activePhase: "Design" });
+    const result = await enforceTool(db, "test-project", "project.wxconversion");
+    expect(result.allowed).toBe(true);
+  });
+
+  it("project.wxconversion blocked outside Design", async () => {
+    const db = stubDb({ activePhase: "Implementation" });
+    const result = await enforceTool(db, "test-project", "project.wxconversion");
+    expect(result.allowed).toBe(false);
+  });
+
+  it("project.wxconversionscope allowed in Design", async () => {
+    const db = stubDb({ activePhase: "Design" });
+    const result = await enforceTool(db, "test-project", "project.wxconversionscope");
+    expect(result.allowed).toBe(true);
+  });
+
+  it("project.wxconversionscope blocked outside Design", async () => {
+    const db = stubDb({ activePhase: "Implementation" });
+    const result = await enforceTool(db, "test-project", "project.wxconversionscope");
+    expect(result.allowed).toBe(false);
+  });
 });
 
 describe("mcp-adapter — unmapped tool pass-through", () => {

@@ -2,6 +2,237 @@
 
 All notable changes to `wxkanban-agent` are documented in this file.
 
+## Unreleased
+
+### Added — `/cwConversion` + `/cwConversionScope`: Clarion conversion commands
+
+The Clarion (SoftVelocity / PCSoft) counterparts to `/wxConversion` and
+`/wxConversionScope`, promoted from self-contained skills to **full commands** on
+the same machinery: server-delivered methodology via `project.get_command_prompt`
+(`cwconversion` / `cwconversionscope` prompts), orchestrator handlers
+(`cwconversion.ts` / `cwconversionscope.ts` — scaffold + install + `--review`
+drift check, no AI), Design-gated capabilities, CLI + MCP policy adapters, and the
+help/install catalogs. `/cwConversion` converts a Clarion app from its TXA/TXD/.clw
+source (per-element Markdown → regenerated windows + DB schema with **real FK
+constraints** recovered from generated ABC `*_BC*.clw` `AddRelationLink` calls +
+queries/procedures/reports scopes); `/cwConversionScope` turns those artifacts into
+BuildScope-style, resumable Scope-of-Project documents with a Clarion-aware
+gap-pass. The bundled Python parsers gained `*_BC*.clw` FK recovery so the
+dictionary's foreign-key graph survives a binary-`.dct` handover.
+
+## v1.7.6 — 2026-06-26
+
+### Fixed — MCP-unavailable guidance no longer blames the subscription
+
+Follow-up to v1.7.5 (BUG-REPORT-wxkanban-mcp-registration §4). When
+`project.get_command_prompt` was unavailable, every MCP-delivered command/skill
+(buildscope, createSpecs, analyzescope, validateScope, research, wxConversion,
+wxConversionScope) told the user to "renew your wxKanban subscription" — masking
+the real cause (MCP not registered with the AI client) and sending users with a
+valid subscription to billing.
+
+- **Corrected fallback text** in all 16 command/skill copies (`_wxAI/commands`,
+  `_wxAI/skills`, `.claude/*`, `wxkanban-agent/templates/skills`): "tool not
+  available" now means "MCP not connected — register via `/wxAI-project-init`
+  (`.mcp.json`) and restart", and only an explicit **401 / subscription error**
+  points at the token or billing.
+- **Connectivity gate** added to `/wxAI-session-start` (Step 1.5): checks whether
+  `project.get_command_prompt` / `project.mcp_health` is available and, if not,
+  prints the exact register-and-restart steps and warns that MCP-delivered
+  commands won't work until fixed. Non-blocking.
+
+(The legitimate JWT-entitlement renew message in `kit-status.ts` is unchanged.)
+
+## v1.7.5 — 2026-06-26
+
+### Fixed — Claude Code never connected to the hosted MCP (BUG-REPORT-wxkanban-mcp-registration)
+
+Two defects left every MCP-delivered slash command (buildscope, createSpecs,
+wxConversionScope, analyzescope, …) dead for Claude Code users:
+
+- **Registration gap (kit).** `init.mjs` wrote the wxperts-agent config but never
+  registered the MCP with **Claude Code**, which loads project-scoped servers from
+  `.mcp.json` at the repo root. `init.mjs` now writes `.mcp.json` after token
+  validation, in the correct remote **SSE** form (`type: "sse"`, `url: <base>/sse`,
+  `Authorization: Bearer <token>` header — scope is derived from the token, so no
+  project-id header), merging any existing servers and gitignoring the file (it
+  holds the token). The stale hardcoded local-process entry
+  (`cwd: e:\AI_Development\…`) was removed from `_wxAI/settings.json`, and
+  `/wxAI-project-init` §2.1 corrected (the old `transport: "https"` + `env` block
+  was invalid for a remote server).
+
+- **Server body-parsing (mcp-server, deployed separately).** The hosted `/messages`
+  route returned `400 stream is not readable` for every client because the global
+  `express.json()` drained the request stream before
+  `SSEServerTransport.handlePostMessage` re-read it. Fixed by passing the parsed
+  body: `handlePostMessage(req, res, req.body)`.
+
+After upgrading, restart Claude Code and approve the `wxkanban` server via `/mcp`.
+
+## v1.7.4 — 2026-06-26
+
+### Fixed — orchestrator self-installs dependencies on first run
+
+The kit ships without `node_modules` (platform-specific binaries), but the
+VS Code `folderOpen` task launches the gateway bin **directly** — never through
+`init.mjs`'s install guard. On a fresh download the bin fell through to `tsx`,
+which wasn't installed yet, and exited with "tsx not found": the orchestrator
+died on first open.
+
+Both launcher bins (`apps/command-gateway/bin/wxai.mjs` and `wxai-http.mjs`) now
+bootstrap dependencies in place when `tsx` is missing — `npm install` (fatal on
+failure) followed by `npm audit fix` (best-effort) at the kit root — then
+re-probe and continue. This makes every entry point (folderOpen gateway task,
+CLI commands, upgrade flow) self-heal. `scripts/init.mjs` gained the matching
+`npm audit fix` step so the manual install path runs both commands too.
+
+## v1.5.0 — 2026-06-09
+
+### Added — `/wxConversionScope`: window-seeded scoping stage for WinDev conversion
+
+Split the WinDev conversion workflow into two stages so the mechanical
+source→Markdown pass is separate from the gated, judgment-heavy scoping pass:
+
+- **`/wxConversion`** is trimmed to **Part A only** — switch the WinDev app to
+  text saves, process `.wdw/.wdg/.wdc` into `pre-convert/` (now **keeping the
+  element extension**: `<name>.wdw.md` / `.wdg.md` / `.wdc.md`), and capture
+  per-window screenshots. Each `.md` is written **incrementally** as its element
+  is processed (never batched); the handler scaffolds `pre-convert/` +
+  `pre-convert/screens/`.
+- **`/wxConversionScope`** (new consumer-side slash command) runs the scoping
+  stage: seed from one window's `*.wdw.md` (or `--all` to sweep every window,
+  one at a time), **follow each call** into the `.wdg.md` / `.wdc.md` it reaches,
+  **analyze the matching `<stem>` screenshot** for control→code→column field
+  mapping, then run the **BuildScope gated section-by-section method to
+  completion**, writing each scope (`specs/Project-Scope/<NNNN>-<stem>.md`) to
+  disk before advancing. Resumable: an interrupted sweep keeps finished scopes.
+
+No new orchestrator surface: the command gateway auto-discovers
+`_wxAI/commands/*.md`, and scoping is editor-AI-driven via the already-installed
+skill (kept consistent with "workflow engine, not AI client"). Kit changes are
+the synced `templates/skills/wxConversion-analyst.md` and the `wxconversion.ts`
+hand-off text. Documented in spec 044 (Amendment 2026-06-09; FR-008, FR-009).
+
+## Unreleased
+
+### Added — opportunistic Dev Cockpit self-update (spec 042 FR-012 / T038)
+
+The kit now keeps the VS Code Dev Cockpit in sync with the bundled `.vsix` at
+everyday `dbpush`/`implement` moments, not only at kit init/upgrade (FR-009/010).
+`ensureCockpitUpToDate()` (`core/orchestrator/cockpit-refresh.ts`) reads the
+installed version via `code --list-extensions --show-versions`, compares it to
+the bundled `wxkanban-dev-cockpit-<version>.vsix`, and `code --install-extension
+… --force` when the installed copy is missing or older — a no-op when equal,
+never a downgrade when newer. Best-effort and once-per-process (same swallow-all
+contract as the refresh ping); disabled by `WXKANBAN_NO_COCKPIT_REFRESH` or the
+dedicated `WXKANBAN_NO_COCKPIT_UPDATE`. Called from the same dbpush/implement
+sites as `emitCockpitRefresh`.
+
+### Fixed — kit unusable behind a corporate TLS proxy + packaging gaps (BUG-REPORT-kit-dbpush-tls-and-packaging.md)
+
+`dbpush`, `createspecs`, `check-kit-version`, and the gateway all failed
+out-of-the-box on a developer machine behind a corporate TLS-inspection proxy
+(Cisco Secure Access). Four fixes:
+
++ **System-CA trust** (`core/bootstrap/system-ca.ts`) —
+  `trustSystemCertificates()` merges the OS certificate store into Node's
+  bundled list in-process (Node 24 `tls.setDefaultCACertificates`), the
+  equivalent of `--use-system-ca` with no `NODE_OPTIONS` flag. Called at every
+  entry point (gateway `cli.ts`, `dbpush`, and on import of `mcp-client.ts`,
+  covering all hub callers), fixing `UNABLE_TO_GET_ISSUER_CERT_LOCALLY`
+  mis-reported as "MCP unreachable". `mcp-client` now distinguishes a TLS-trust
+  failure from a real network error and drops the stale "start setup-mcp.mjs"
+  hint (hosted-only since spec 028). Same fix applied to
+  `scripts/check-kit-version.mjs`.
++ **No `process.exit()` mid-teardown** — replaced `process.exit()` after
+  `fetch` with `process.exitCode` + natural drain in `check-kit-version.mjs`,
+  `dbpush`, and `cli.ts`, fixing the Windows/Node 24 libuv `UV_HANDLE_CLOSING`
+  crash (exit `-1073740791`) that broke the folderOpen task.
++ **`@wxkanban/preflight` resolves on clean install** — added
+  `@wxkanban/preflight: file:shared/preflight` to root `package.json` and
+  `shared/` to `upgrade-kit.mjs` `KIT_DIRS`, so `npm install` links the package
+  instead of `dbpush`/`createspecs` crashing at import.
++ **`dbpush` CLI honours its flags + loads `.env`** —
+  `core/bootstrap/load-env.ts` `loadProjectEnv()` is wired into both the
+  `dbpush` runner and the gateway, and the CLI now parses
+  `--dry-run/--spec/--force/--skip-lifecycle` instead of hardcoding
+  `dbpush({})`.
+
+### Fixed — Dev Cockpit remaining counts never dropped (spec 042 FR-006 / SC-3)
+
+The cockpit's refresh ping (T021) shipped, but the write-back it pings for was
+never implemented — `implement` never wrote `projecttasks.status` and `dbpush`
+explicitly deferred task-status sync — so tasks marked done in tasks.md stayed
+`todo` in the DB and the remaining count never moved.
+
++ **`syncTaskStatuses()`** (`core/orchestrator/sync-task-status.ts`, T037) —
+  resolves DB task UUIDs via `project.cockpit_summary` (no markdown T-ID needed)
+  and flips completed tasks to `done` via `project.update_task_status`. Wired
+  into `dbpush` (`pushExistingSpec`, replacing the deferred stub) and into
+  `implement` batch-completion, so completing tasks auto-dbpushes the status.
+  Best-effort: a missing token / unreachable MCP never fails the command.
++ **`project.update_task_status` scope-bound** (mcp-server, T036) — was a raw
+  `db.update(...).where(eq(id))` with no project filter (within-customer
+  write-side leak + spec-028 T011 violation); now routes through
+  `scoped.updateScoped`, so a cross-project `taskId` matches nothing.
+
+## v1.3.0 — 2026-05-28
+
+### Added — VS Code Dev Cockpit extension shipped in the kit (spec 042)
+
+A read-only VS Code sidebar that shows the linked project's remaining work per
+scope (active scope pinned), reading exclusively through the hosted,
+project-scoped MCP. It now ships and installs as part of the kit:
+
++ **`vscode-extension/`** — the Dev Cockpit (Activity Bar view, read-only task
+  detail, open-related-spec, empty/error states). Token lives in VS Code
+  SecretStorage, bootstrapped from the kit's locations on first run.
++ **Live refresh** — `dbpush` and `implement` completion now ping
+  `vscode://wxperts.wxkanban-dev-cockpit/refresh` (best-effort `code
+  --open-url`; disable with `WXKANBAN_NO_COCKPIT_REFRESH=1`) so the cockpit
+  re-queries immediately. A visible-only 30s poll is the fallback for changes
+  made outside the IDE.
++ **Distribution** — `scripts/build-release.mjs` rebuilds the `.vsix` from the
+  mirrored extension source and packs only the artifact into the kit archive;
+  `scripts/init.mjs` installs/updates it via `code --install-extension`,
+  version-aware (unchanged = no-op) and best-effort (skipped when `code` is
+  absent). A kit upgrade re-runs `init.mjs`, so the extension tracks the kit.
+
+### Added/Changed — MCP
+
++ **`project.cockpit_summary`** (mcp-server) — single-project read returning the
+  project's scopes with their incomplete tasks (`todo`/`in_progress`/`blocked`)
+  and counts. Bound to the token's project via `selectScoped`, with an explicit
+  scope assertion, so a token for one project can never surface a sibling
+  project under the same customer.
+
+## v1.2.6 — 2026-05-24
+
+### Fixed — upstreamed two YappChat local patches so consumers don't have to reapply them
+
+Both patches address the same friction: getting a freshly-initialized
+consumer project to reach the hosted MCP without the operator manually
+exporting env vars in every shell.
+
++ **`core/context/runtime-state.ts`** — `resolveServiceUrl('mcp')` now
+  honours `WXKANBAN_MCP_BASE_URL` as an env var alongside `MCP_BASE_URL`
+  and `MCP_HTTP_URL`, and adds `.wxkanban-project.json` `mcpBaseUrl` as
+  a final filesystem fallback before the legacy port default. `init.mjs`
+  writes the hosted URL to `.wxkanban-project.json`, so this closes the
+  loop and `dbpush` / `lifecycle-client` reach mcp.wxperts.com
+  automatically.
++ **`apps/command-gateway/bin/wxai.mjs`** — shim now autoloads `.env`
+  at `process.cwd()` before spawning `tsx`, so `WXKANBAN_API_TOKEN`
+  (written by `init.mjs`/`kit-configure`) is available to the child
+  without `source .env`. Existing exported env vars win — `.env` never
+  overrides what the operator set explicitly. Handles single- and
+  double-quoted values, skips comments and blank lines.
+
+(`wxkanban-agent/` source otherwise unchanged from v1.2.5. No new tests
+required — both patches are additive guards on existing precedence
+chains and continue to pass the runtime-state-resolver and dbpush
+round-trip suites.)
+
 ## v1.2.5 — 2026-05-24
 
 ### Fixed — `dbpush` tasks.md parser format mismatch (BUG-2026-05-24)
