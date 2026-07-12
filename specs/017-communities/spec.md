@@ -28,7 +28,7 @@ Neither incumbent owns *communities of interest*. Slack is employer-bound; Whats
 
 1. **Policy correctness 100%** — effective join policy resolves to the stricter of (community × space); `unlisted` never appears in discovery.
 2. **Membership-gated everything** — non-members get zero space data and cannot subscribe `conversation:{id}`; verified server-side.
-3. **Translation fidelity & thrift** — opt-in, original + code blocks byte-preserved, each `(message, language)` translated at most once, same-language view = zero calls.
+3. **Translation fidelity & thrift** — viewer-controlled, original + code blocks byte-preserved, each `(message, language)` translated at most once, same-language view = zero calls.
 4. **Community-owned retention** — a member cannot purge community content; only owner/mod retention applies.
 5. **AI scoping & citation** — retrieval is hard-scoped to the community, answers in the asker's language and cite ≥1 source.
 
@@ -47,6 +47,11 @@ Threads/reactions/pins/file-sharing; paid communities; bridged communities; E2E 
 ## Open Questions
 
 None blocking — resolved in the 2026-06-18 scope session (see scope doc Clarifications): beachhead, profile location (account-level/011), translation opt-in, community-owned history, two-level access control, own-spec, no-E2E.
+
+**Added 2026-07-12 (translation amendment):**
+
+- **Source-language detection** — a message's source language currently defaults to the author's account `preferredlanguage` (FR-010). Should the engine additionally auto-detect per message (for an author who writes off their profile language)? Lean: keep the profile-language default now, add lightweight detection later.
+- **Per-room override home** — the per-room translate override is `conversationmembers.autotranslate` (`NULL` = inherit the global account default). Confirm that column lives in the spec 001 shared `conversationmembers` core rather than a 017-local table.
 
 ## Functional Requirements
 
@@ -80,13 +85,13 @@ Discovery lists/searches `public` communities (name, description, member count, 
 Searchable member list (name, language, availability, role); visible to community members only.
 
 ### FR-010 — Native messaging in spaces (store original)
-Messaging rides 001/003 on `conversation:{id}` with **membership-checked subscribe**; each message stores **original content + source language** (default = author's account language); rendered with author identity from the account profile.
+Messaging rides 001/003 on `conversation:{id}` with **membership-checked subscribe**; each message stores **original content + source language** (default = author's account `preferredlanguage`); rendered with author identity from the account profile. Per-message language detection (for an author who writes off their profile language) is an Open Question — see below.
 
 ### FR-011 — Broadcast spaces
 Only owner/mod may post in a `broadcast` space; members are read fan-out; translation + history apply.
 
-### FR-012 — Per-viewer opt-in translation
-**Opt-in** per viewer (off by default); **original always stored/viewable**, code blocks never translated; **lazy + cached** per `(message × target-language)`; engine = Claude Haiku; same-language view = no call.
+### FR-012 — Per-viewer smart auto-translation
+**Viewer-controlled**, **off by default**. When a viewer's **effective** translate setting is ON for a space, **every** message whose source language ≠ the viewer's `preferredlanguage` is auto-translated into it — a **persistent room behavior, not a one-shot action**; a same-language message is never translated (zero calls). **Effective setting = the per-room override if set, else the global account default** (spec 068 `users.autotranslate`, default **OFF** — the off-by-default invariant is preserved via that global default; per-room override stored on `conversationmembers.autotranslate`, `NULL` = inherit). **Original always stored/viewable** ("view original" always present on a translated message); **code blocks never translated**; **lazy render** (original shows on arrival, translation swaps in); **cached** per `(messageid, langcode)` in `messagetranslations`; engine = a **fast MT model** (Groq Llama primary — already wired for captions — with Gemini as a drop-in fallback; pinnable via `CHAT_TRANSLATE_PROVIDER`). DM parity: spec 018 FR-018-TR-* reuses this exact model over escrow-encrypted DMs (server-side), keyed on encryption mode.
 
 ### FR-013 — Durable, community-owned history
 Retained per the **community's** setting (default forever), owner/mod governed; members cannot purge community content; paginated; `lastreadat` drives unread.
@@ -128,7 +133,7 @@ An owner/moderator (capability `invite:create`) may mint a **single-use, expirin
 
 ## Data Model
 
-**New tables (017):** `communities`, `communitymembers` (role + availability only — *not* a profile), `spaces` (references a 001 conversation), `communityinvites`, `joinrequests`, `messagetranslations` (cache, unique `(messageid,langcode)`), `messageembeddings` (pgvector), `communityauditlog` (append-only).
+**New tables (017):** `communities`, `communitymembers` (role + availability only — *not* a profile), `spaces` (references a 001 conversation), `communityinvites`, `joinrequests`, `messagetranslations` (cache, unique `(messageid,langcode)`; carries **both** a plaintext `translatedcontent` **and** an `encryptedpayload bytea` — the latter holds escrow-DM translations encrypted under the conversation DEK per spec 018 FR-018-TR-003, so DM parity needs no later ALTER), `messageembeddings` (pgvector), `communityauditlog` (append-only).
 
 **FR-020 change:** `communityinvites` gains a **nullable `spaceid`** (FK → `spaces`, `ON DELETE cascade`, indexed): `NULL` = community-wide invite (FR-004, unchanged); set = per-space invite (FR-020). One table, one hashed-token/redemption path. Migration **0021**.
 

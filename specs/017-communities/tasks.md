@@ -15,7 +15,7 @@
 | 2 | Join flow + invites + approval queue + moderation + audit | high | DONE + LIVE-VERIFIED — join (open/approval/invite) + single-use expiring invites + approval queue + approve/deny + role-set + remove (revokes space access) + append-only `communityauditlog`; joining syncs user into all space conversations (T009); last-owner protection. Tables joinrequests/communityinvites/communityauditlog (migration `0009` APPLIED). Notifications (FR-016) deferred (spec 009 not built). tsc/eslint/94 tests green. Live e2e `scripts/communities-t002-e2e.mjs` 13/13. Fixed invite-validation bug (2nd query selected only id but read usedat/expiresat). |
 | 3 | Discovery + member directory + profile surfacing + availability | high | todo |
 | 4 | Native messaging in spaces + broadcast + store original | high | todo |
-| 5 | Per-viewer opt-in translation (lazy, cached, Claude) | high | todo |
+| 5 | Per-viewer smart auto-translation (lazy, cached, Haiku) + global/per-room setting | high | todo |
 | 6 | Presence + typing + live availability in spaces | medium | todo |
 | 7 | Durable community-owned history + pagination + search | high | todo |
 | 8 | AI over history — pgvector embeddings + community RAG /ask | medium | todo |
@@ -39,9 +39,9 @@ FR-006/007/008/009. Community discovery surface lists/searches public communitie
 
 FR-010/011 (+FR-016 mentions/new-message notifs). Send/receive ride spec 001 engine + spec 003 conversation:{id} scope; subscribe authorized by membership (closes the open-subscribe hole). Each message stores original content + source language (defaults to author's account-profile language). Render with author identity resolved from the account profile. Broadcast spaces: only owner/moderator may post, members are read fan-out. @mention + new-message notifications via spec 009 (respect per-space mute).
 
-### T005 — Per-viewer opt-in translation (lazy, cached, Claude)
+### T005 — Per-viewer smart auto-translation (lazy, cached, Haiku)
 
-FR-012. Translation is opt-in per viewer (off by default); a toggle translates the current view into the viewer's account preferred language. Original is always stored and viewable ('view original'); content inside code blocks is never translated. Lazy: translate per (message x target-language) only when a viewer of that language opts in; cache in messagetranslations (unique (messageid,langcode)); identical requests served from cache; same-language view performs zero translation calls. Engine = Claude Haiku (current model). Route POST /api/messages/:mid/translate.
+FR-012. Viewer-controlled, off by default. When a viewer's EFFECTIVE translate setting is ON for a space, every message whose source language ≠ the viewer's preferredlanguage auto-translates into it (persistent room behavior, not a one-shot action); same-language messages perform zero calls. Effective setting = per-room override (conversationmembers.autotranslate, NULL=inherit) else the global account default (users.autotranslate, default false — spec 068 follow-on migration). Original always stored + viewable ('view original'); code blocks never translated; lazy render (original first, translation swaps in); cache per (messageid,langcode) in messagetranslations; identical requests served from cache; in-flight dedupe so a hot message isn't translated twice at once. Engine = fast MT model — Groq Llama primary (reuses the captions GROQ_* env), Gemini fallback, pinnable via CHAT_TRANSLATE_PROVIDER. messagetranslations is defined with BOTH translatedcontent text (plaintext, spaces) AND encryptedpayload bytea (escrow-DM parity per spec 018 FR-018-TR-003) — one populated per tier. Route POST /api/messages/:mid/translate resolves cache-or-translate; the toggle sets the effective setting, it does not itself translate. Migrations: conversationmembers.autotranslate (spec 001 shared core) + users.autotranslate (spec 068). Reused by spec 018 FR-018-TR-* for escrow DMs (server-side), keyed on conversationkeys.mode.
 
 ### T006 — Presence + typing + live availability in spaces
 

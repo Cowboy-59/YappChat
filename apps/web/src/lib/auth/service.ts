@@ -66,6 +66,7 @@ function toSessionUser(row: typeof users.$inferSelect): SessionUser {
     bio: row.bio,
     avatarurl: row.avatarurl,
     preferredlanguage: row.preferredlanguage,
+    autotranslate: row.autotranslate,
   };
 }
 

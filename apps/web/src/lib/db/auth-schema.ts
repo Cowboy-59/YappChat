@@ -48,6 +48,11 @@ export const users = ycSchema.table(
     bio: text("bio"),
     avatarurl: text("avatarurl"),
     preferredlanguage: text("preferredlanguage"),
+    // Spec 068 (translation amendment) — global "always show messages in my
+    // language" default. Target language = preferredlanguage. Off by default, so
+    // the per-viewer opt-in invariant (017 FR-012) holds; a per-room override
+    // lives on conversationmembers.autotranslate.
+    autotranslate: boolean("autotranslate").notNull().default(false),
     emailverifiedat: timestamp("emailverifiedat", { withTimezone: true }),
     createdat: timestamp("createdat", { withTimezone: true }).notNull().defaultNow(),
     updatedat: timestamp("updatedat", { withTimezone: true }).notNull().defaultNow(),

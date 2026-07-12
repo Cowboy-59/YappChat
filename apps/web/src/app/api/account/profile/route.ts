@@ -20,6 +20,8 @@ const ProfileSchema = z
       .optional()
       .refine((v) => v == null || isPresetPath(v), { message: "avatar must be null or a preset path" }),
     preferredlanguage: z.enum(LANGUAGE_CODES).nullable().optional(),
+    // Global "always show messages in my language" default (spec 068 translation amendment).
+    autotranslate: z.boolean().optional(),
   })
   .strict();
 

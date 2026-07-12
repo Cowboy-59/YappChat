@@ -19,6 +19,9 @@ export type SessionUser = {
   bio: string | null;
   avatarurl: string | null;
   preferredlanguage: string | null;
+  // Spec 068 (translation amendment) — global "always show messages in my
+  // language" default; consumed by spec 017 FR-012 / 018 FR-018-TR-*.
+  autotranslate: boolean;
 };
 
 export type OrgSummary = {

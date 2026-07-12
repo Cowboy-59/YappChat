@@ -40,6 +40,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
       bio: users.bio,
       avatarurl: users.avatarurl,
       preferredlanguage: users.preferredlanguage,
+      autotranslate: users.autotranslate,
     })
     .from(sessions)
     .innerJoin(users, eq(sessions.userid, users.id))
@@ -66,6 +67,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     bio: row.bio,
     avatarurl: row.avatarurl,
     preferredlanguage: row.preferredlanguage,
+    autotranslate: row.autotranslate,
   };
 }
 

@@ -193,6 +193,10 @@ export const conversationmembers = ycSchema.table(
     userid: uuid("userid").notNull(),
     role: text("role").notNull().default("member"),
     lastreadat: timestamp("lastreadat", { withTimezone: true }),
+    // Spec 017 FR-012 / 018 FR-018-TR-* — per-room translate override for this
+    // member. NULL = inherit the global account default (users.autotranslate);
+    // true/false = force this room on/off regardless of the account default.
+    autotranslate: boolean("autotranslate"),
     joinedat: timestamp("joinedat", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -201,8 +205,42 @@ export const conversationmembers = ycSchema.table(
   ],
 );
 
+/**
+ * Spec 017 FR-012 + spec 018 FR-018-TR-003 — per-viewer message translation cache.
+ *
+ * A message is translated into a given target language at most once, then reused
+ * by every viewer sharing that language (never per-person, never all-languages
+ * up front). Same-language views never create a row. Keyed unique on
+ * (messageid, langcode).
+ *
+ * Two payload columns mirror how `messages` stores content:
+ *  - `translatedcontent` (plaintext) for space/plaintext-tier messages (017);
+ *  - `encryptedpayload` (bytea, KMS-wrapped conversation DEK) for escrow-DM
+ *    translations (018 §7) — a private translation is as sensitive as its
+ *    original, so it MUST NOT be written as plaintext.
+ * Exactly one is populated per row, per the source message's tier.
+ */
+export const messagetranslations = ycSchema.table(
+  "messagetranslations",
+  {
+    id: uuid("id").primaryKey(),
+    messageid: uuid("messageid")
+      .notNull()
+      .references(() => messages.id, { onDelete: "cascade" }),
+    langcode: text("langcode").notNull(), // target ISO 639-1 (en/fr/es/de/it/pt)
+    sourcelang: text("sourcelang").notNull(), // the original's language at translate time
+    translatedcontent: text("translatedcontent"), // plaintext tier (017)
+    encryptedpayload: bytea("encryptedpayload"), // escrow-DM tier (018 §7)
+    createdat: timestamp("createdat", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("messagetranslations_message_lang_key").on(t.messageid, t.langcode),
+  ],
+);
+
 export type ChannelRow = typeof channels.$inferSelect;
 export type ConversationRow = typeof conversations.$inferSelect;
 export type MessageRow = typeof messages.$inferSelect;
 export type MessageAuditLogRow = typeof messageauditlog.$inferSelect;
 export type ConversationMemberRow = typeof conversationmembers.$inferSelect;
+export type MessageTranslationRow = typeof messagetranslations.$inferSelect;

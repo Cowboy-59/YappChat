@@ -15,6 +15,7 @@ export async function updateProfile(
     bio?: string | null;
     avatarurl?: string | null;
     preferredlanguage?: string | null;
+    autotranslate?: boolean;
   },
 ): Promise<void> {
   const db = getDb();

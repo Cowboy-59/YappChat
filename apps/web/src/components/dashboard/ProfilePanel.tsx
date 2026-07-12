@@ -15,6 +15,7 @@ export function ProfilePanel({ user, avatarSrc }: { user: SessionUser; avatarSrc
   const router = useRouter();
   const [displayname, setDisplayname] = useState(user.displayname);
   const [preferredlanguage, setPreferredlanguage] = useState(user.preferredlanguage ?? "");
+  const [autotranslate, setAutotranslate] = useState(user.autotranslate);
   const [bio, setBio] = useState(user.bio ?? "");
   const [saving, setSaving] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -37,6 +38,7 @@ export function ProfilePanel({ user, avatarSrc }: { user: SessionUser; avatarSrc
       body: JSON.stringify({
         displayname: displayname.trim(),
         preferredlanguage: preferredlanguage || null,
+        autotranslate,
         bio: bio.trim() || null,
       }),
     });
@@ -196,6 +198,22 @@ export function ProfilePanel({ user, avatarSrc }: { user: SessionUser; avatarSrc
             </option>
           ))}
         </select>
+      </label>
+      {/* Global translate default (spec 068 / 017 FR-012). Off by default; a room
+          can override this per-conversation. Target = the language chosen above. */}
+      <label className="flex items-start gap-2">
+        <input
+          type="checkbox"
+          className="mt-0.5 h-4 w-4 rounded border-border"
+          checked={autotranslate}
+          onChange={(e) => setAutotranslate(e.target.checked)}
+        />
+        <span className={label}>
+          Always show messages in my language
+          <span className="mt-0.5 block font-normal text-muted-foreground">
+            Auto-translate incoming messages to your preferred language. You can override this per room.
+          </span>
+        </span>
       </label>
       <label className={label}>
         Bio

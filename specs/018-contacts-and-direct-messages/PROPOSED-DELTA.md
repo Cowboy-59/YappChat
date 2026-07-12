@@ -1132,3 +1132,48 @@ Verified non-bugs (§11):
    - *Suggested:* Add an FR requiring: (1) the third-party AI processor be named as a sub-processor in the Privacy Policy / DPA and disclosed to users; (2) a contractual no-retention / no-training term with the provider for classifier traffic, verified before enabling; (3) a residency analysis for the provider region vs user residencies. Prefer a provider/mode with a zero-retention API for this traffic.
 30. **[low] Section 8 FR-8.3 / OQ-1 — fire-and-forget async classification after persist can silently drop classifications on crash, creating monitoring gaps the spec elsewhere treats as unacceptable** — FR-8.3 requires enqueue AFTER durable persist 'so no in-scope message is silently skipped', but OQ-1 admits the async mechanism is undecided and lists 'in-process fire-and-forget' as an option, which loses the classification if the process dies between persist and classify. The route already uses fire-and-forget for the space AI auto-answer (`void maybeAutoAnswerForConversation(...).catch(()=>{})` in the messages route), so the likely implementation path is the lossy one. A silently-dropped classification directly contradicts FR-8.9's 'MUST NOT drop the message from the eligible set' and the stated goal that a silently-failing classifier is a monitoring gap — which matters legally, since the whole justification for the privacy tradeoff is that serious-crime content is actually reviewed.
    - *Suggested:* Decide OQ-1 toward a DURABLE work record (e.g. an eligibility/queue row written in the same transaction as the message, drained by a worker with retry), not in-process fire-and-forget. Add an acceptance criterion: after a process crash between persist and classify, the message is still classified by the sweep (FR-8.6b) — verified, not assumed.
+
+
+---
+
+## [spec 018] Section 9 — Cross-language DM translation (encryption-mode-keyed, added 2026-07-12)
+
+**Owning spec:** 018 (Contacts & Direct Messages). **Reuses:** spec 017 FR-012 (per-viewer smart auto-translation model + `messagetranslations` cache + Claude Haiku 4.5 engine). **Depends on:** Section 7 (escrow encryption + `conversationkeys.mode`) and Section 8 (server-side decrypt path). **Status:** PROPOSAL — approve before code.
+
+DMs get the same "show messages in my language" capability as community spaces. The only differences from 017 are (a) DM content is escrow-encrypted at rest, so translation runs over decrypted plaintext via the existing Section 7/8 path, and (b) where translation executes is dictated by the conversation's encryption mode. The encryption model itself is unchanged — translation is purely additive.
+
+### Functional Requirements
+
+**FR-018-TR-001 (018) — DM translation reuses the 017 per-viewer model.** A DM message whose source language ≠ the viewer's effective target language (global `users.autotranslate` default, overridable per conversation via `conversationmembers.autotranslate`) is auto-translated into the viewer's `preferredlanguage`, lazily, cached once per `(messageid, langcode)`, with "view original" always available and code blocks never translated. Same behavior, cache table, and engine (the fast MT model of spec 017 FR-012 — Groq Llama primary, Gemini fallback) as spec 017 FR-012.
+
+**FR-018-TR-002 (018) — Execution is keyed on `conversationkeys.mode` (Section 7).**
+- `mode = 'escrow'` (ALL DMs at launch) → **server-side**: the server decrypts the message via the audited Section 7 unwrap path (the same decrypt already performed for the Section 8 classifier) → translates → caches.
+- `mode = 'e2e'` (spec 010 zero-knowledge; reserved, not applied at launch) → **client-side**: the server cannot read the plaintext, so translation runs on the recipient's device; no server cache. The server MUST NOT attempt to decrypt or translate an `e2e` conversation.
+
+**FR-018-TR-003 (018) — Encrypted translation cache (hard rule).** For an `escrow` conversation, the cached translation MUST be stored **encrypted under the same conversation DEK** (in `messagetranslations.encryptedpayload`, mirroring `messages.encryptedpayload`); the server MUST NOT write private translated text as plaintext to `messagetranslations.translatedcontent`, logs, analytics, or any error payload. This preserves the Section 7 "no plaintext in a DB dump" guarantee for translations, closing the same leak class as OQ-6 / finding #24. Public/plaintext (spec 017 space) translations continue to use the plaintext `translatedcontent` column.
+
+**FR-018-TR-004 (018) — Launch reality + graceful E2E stub.** At launch every private conversation is `escrow`, so the server-side path (FR-018-TR-002 escrow branch) is what ships and runs. The `e2e` branch is designed now but shipped as a graceful "translation happens on your device here" affordance; the on-device translator is built when spec 010 E2E DMs ship. A viewer with translation ON in a (future) `e2e` DM MUST get a clear "translated on-device / unavailable" state, never a silent failure or a server-side decrypt attempt.
+
+### Data-model changes
+
+- **`messagetranslations`** (created by spec 017 T005) MUST be defined from the start with **both** `translatedcontent text` (nullable; plaintext, for space/plaintext tiers) and `encryptedpayload bytea` (nullable; escrow-DM translations, KMS-wrapped conversation DEK per Section 7). Exactly one is populated per row per tier. Unique `(messageid, langcode)` unchanged. No later ALTER needed for DM parity.
+- **`conversationmembers.autotranslate boolean NULL`** (spec 001 shared core) — per-conversation override; `NULL` = inherit the global `users.autotranslate` default. Applies to DMs and spaces alike.
+- **`users.autotranslate boolean NOT NULL default false`** (spec 068 follow-on migration) — the global default.
+
+### Acceptance Criteria
+
+- [ ] In an `escrow` DM, a message whose source language ≠ the viewer's `preferredlanguage` renders original-first, then swaps to a translation; the translation is produced via the Section 7 decrypt path and cached **encrypted** (`messagetranslations.encryptedpayload` populated, `translatedcontent` NULL).
+- [ ] A same-language DM message performs zero translation calls; a second viewer sharing the target language is served from cache (one call per `(messageid, langcode)`).
+- [ ] A DB dump of `messagetranslations` yields **no** plaintext for escrow-DM translations.
+- [ ] The server never attempts to decrypt or translate a `mode = 'e2e'` conversation; a translation-ON viewer there sees the on-device/unavailable affordance, not an error.
+- [ ] The per-conversation `autotranslate` override wins over the global `users.autotranslate` default; `NULL` inherits it.
+
+### Security & privacy notes
+
+- **No new plaintext store.** FR-018-TR-003 keeps translations inside the same escrow envelope as the originals; a translation is exactly as sensitive as the message it renders and is protected identically.
+- **No new decrypt surface.** Server-side DM translation reuses the existing Section 7/8 decrypt path; it does not introduce a new place where private plaintext is exposed, and it is subject to the same lawful-access/audit posture.
+- **E2E is never weakened for translation.** A true zero-knowledge (`e2e`) conversation is never decrypted server-side for translation; the mode discriminator guarantees the escrow-only server path can never run on an E2E conversation.
+
+**Open questions:**
+- OQ-TR-A: Source language — trust the author's account `preferredlanguage` (spec 017 FR-010 default) or auto-detect per message? Shared with spec 017's added open question; decide once for both surfaces.
+- OQ-TR-B: Does the DEK in-memory cache (FR-018-ENC-013) get reused for a translation decrypt, and does that widen the exposure window (finding #27)? Confirm translation decrypts honor the same cache-eviction rules.

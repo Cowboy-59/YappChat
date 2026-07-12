@@ -80,9 +80,13 @@ The spec-011 `users` table MUST gain three nullable columns — bio, avatarurl, 
 - [ ] Migration 0010 adds the three columns to yappchat.users (safe ADD COLUMN).
 - [ ] `GET /api/auth/me` returns bio, avatarurl, preferredlanguage.
 
+**Translation setting (added 2026-07-12):** a follow-on generate-only Drizzle migration MUST add an `autotranslate boolean NOT NULL default false` column to `yappchat.users` — the global "Always show messages in my language" switch (target language = `preferredlanguage`). SessionUser + getSessionUser carry it so `/api/auth/me` exposes it. This is the account-level default consumed by spec 017 FR-012 and spec 018 FR-018-TR-*; a per-room override lives on `conversationmembers.autotranslate` (spec 001 shared core), not here.
+
+- [ ] The follow-on migration adds `autotranslate` (safe ADD COLUMN, default false); `GET /api/auth/me` returns it.
+
 ### FR-005 — Profile read/update endpoint
 
-`PATCH /api/account/profile` (requireAuth) MUST update the profile via an account-service `updateProfile`, zod-validating displayname (1–80), bio (≤2000, nullable), preferredlanguage (one of en/fr/es/de/pt, nullable), and avatarurl (null or a preset path only — arbitrary URLs/keys rejected). Returns 200 on valid input and 422 on invalid. `/api/auth/me` stays read-only.
+`PATCH /api/account/profile` (requireAuth) MUST update the profile via an account-service `updateProfile`, zod-validating displayname (1–80), bio (≤2000, nullable), preferredlanguage (one of en/fr/es/de/it/pt, nullable), avatarurl (null or a preset path only — arbitrary URLs/keys rejected), and `autotranslate` (boolean — the global "always show messages in my language" default). Returns 200 on valid input and 422 on invalid. `/api/auth/me` stays read-only.
 
 **Acceptance Criteria**:
 
