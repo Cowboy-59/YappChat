@@ -258,7 +258,15 @@ export function SpacesManager({ communityId }: { communityId: string }) {
   }, [load]);
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
+      {/* Community-wide invite link (FR-004/FR-021) — joins the community, no specific
+          space. Always reusable-eligible; sits with the community's entry settings. */}
+      <div className="space-y-1 rounded-lg border border-border p-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Community invite link</p>
+        <p className="text-[11px] text-muted-foreground">Anyone with this link joins the community (no specific space).</p>
+        <SpaceInviteButton communityId={communityId} reusable label="Generate community link" />
+      </div>
+
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Spaces</p>
         <button onClick={() => setAdding((v) => !v)} className={ghost}>
@@ -441,12 +449,25 @@ function usesLabel(i: { maxuses: number | null; usecount: number; remaining: num
   return `${i.remaining ?? 0} of ${i.maxuses} left`;
 }
 
-/** Spec 017 FR-020/FR-021 — mint a shareable link that admits the clicker directly
- *  into THIS space (overriding its strict policy). Single-use, or (FR-021) reusable
- *  with a use cap for open/approval spaces. Shows the full clickable URL once, plus
- *  a list of live links with remaining uses + Revoke. */
-function SpaceInviteButton({ communityId, spaceId, reusable }: { communityId: string; spaceId: string; reusable: boolean }) {
-  const base = `/api/communities/${communityId}/spaces/${spaceId}/invites`;
+/** Spec 017 FR-020/FR-021 — mint a shareable invite link. With `spaceId` it admits
+ *  the clicker directly into THAT space (overriding its strict policy); without one
+ *  it's a community-wide link (join the community, no specific space). Single-use, or
+ *  (FR-021) reusable with a use cap. Shows the full clickable URL once, plus a list
+ *  of live links with remaining uses + Revoke. */
+function SpaceInviteButton({
+  communityId,
+  spaceId,
+  reusable,
+  label = "Generate invite link",
+}: {
+  communityId: string;
+  spaceId?: string;
+  reusable: boolean;
+  label?: string;
+}) {
+  const base = spaceId
+    ? `/api/communities/${communityId}/spaces/${spaceId}/invites`
+    : `/api/communities/${communityId}/invites`;
   const [choice, setChoice] = useState(0); // index into USES_CHOICES (0 = single-use)
   const [link, setLink] = useState<{ url: string; expiresat: string } | null>(null);
   const [invites, setInvites] = useState<ActiveInvite[]>([]);
@@ -507,7 +528,7 @@ function SpaceInviteButton({ communityId, spaceId, reusable }: { communityId: st
           </select>
         )}
         <button type="button" onClick={generate} disabled={busy} className={ghost}>
-          {busy ? "…" : "Generate invite link"}
+          {busy ? "…" : label}
         </button>
       </div>
       {link && (
