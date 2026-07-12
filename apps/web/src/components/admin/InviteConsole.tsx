@@ -104,16 +104,26 @@ export function InviteConsole() {
           void load();
         }}
       />
-      {note && <p className="rounded-lg bg-muted px-3 py-2 text-xs">{note}</p>}
+      {note && (
+        <p role="status" aria-live="polite" className="rounded-lg bg-muted px-3 py-2 text-xs">
+          {note}
+        </p>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
-        <select className={`${field} w-auto`} value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+        <select aria-label="Filter by invite type" className={`${field} w-auto`} value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
           <option value="">All types</option>
           <option value="company">Company</option>
           <option value="community">Community</option>
           <option value="space">Space</option>
         </select>
-        <input className={`${field} w-56`} placeholder="Search target / email" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input
+          aria-label="Search invites by target or email"
+          className={`${field} w-56`}
+          placeholder="Search target / email"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
       </div>
 
       <div className="overflow-x-auto">
@@ -139,7 +149,14 @@ export function InviteConsole() {
                 <td className="py-1.5 pr-3 text-muted-foreground">{i.invitedbyemail ?? "—"}</td>
                 <td className="py-1.5 pr-3 text-muted-foreground">{new Date(i.expiresat).toLocaleDateString()}</td>
                 <td className="py-1.5 text-right">
-                  <button type="button" onClick={() => void revoke(i)} className="font-semibold text-destructive hover:underline">
+                  <button
+                    type="button"
+                    aria-label={`Revoke ${i.type} invite to ${i.target}`}
+                    onClick={() => {
+                      if (window.confirm(`Revoke this ${i.type} invite to "${i.target}"? Any unused link stops working immediately.`)) void revoke(i);
+                    }}
+                    className="rounded font-semibold text-destructive hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive"
+                  >
                     Revoke
                   </button>
                 </td>
@@ -212,7 +229,7 @@ function CreateInviteForm({ targets, onCreated }: { targets: Targets; onCreated:
   return (
     <form onSubmit={submit} className="space-y-2 rounded-xl border border-border p-3">
       <div className="flex flex-wrap items-center gap-2">
-        <select className={`${field} w-auto`} value={type} onChange={(e) => setType(e.target.value as typeof type)}>
+        <select aria-label="Invite type" className={`${field} w-auto`} value={type} onChange={(e) => setType(e.target.value as typeof type)}>
           <option value="company">Into a company</option>
           <option value="community">Into a community</option>
           <option value="space">Into a space</option>
@@ -220,7 +237,7 @@ function CreateInviteForm({ targets, onCreated }: { targets: Targets; onCreated:
 
         {type === "company" ? (
           <>
-            <select className={`${field} w-auto`} value={orgid} onChange={(e) => setOrgid(e.target.value)} required>
+            <select aria-label="Company" className={`${field} w-auto`} value={orgid} onChange={(e) => setOrgid(e.target.value)} required>
               <option value="">Select company…</option>
               {targets.orgs.map((o) => (
                 <option key={o.id} value={o.id}>
@@ -228,8 +245,17 @@ function CreateInviteForm({ targets, onCreated }: { targets: Targets; onCreated:
                 </option>
               ))}
             </select>
-            <input className={`${field} w-56`} type="email" placeholder="colleague@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
-            <select className={`${field} w-auto`} value={role} onChange={(e) => setRole(e.target.value as typeof role)}>
+            <input
+              aria-label="Colleague email"
+              autoComplete="email"
+              className={`${field} w-56`}
+              type="email"
+              placeholder="colleague@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+            <select aria-label="Role" className={`${field} w-auto`} value={role} onChange={(e) => setRole(e.target.value as typeof role)}>
               <option value="member">Member</option>
               <option value="admin">Admin</option>
             </select>
@@ -237,6 +263,7 @@ function CreateInviteForm({ targets, onCreated }: { targets: Targets; onCreated:
         ) : (
           <>
             <select
+              aria-label="Community"
               className={`${field} w-auto`}
               value={communityid}
               onChange={(e) => {
@@ -253,7 +280,7 @@ function CreateInviteForm({ targets, onCreated }: { targets: Targets; onCreated:
               ))}
             </select>
             {type === "space" && (
-              <select className={`${field} w-auto`} value={spaceid} onChange={(e) => setSpaceid(e.target.value)} required>
+              <select aria-label="Space" className={`${field} w-auto`} value={spaceid} onChange={(e) => setSpaceid(e.target.value)} required>
                 <option value="">Select space…</option>
                 {(community?.spaces ?? []).map((s) => (
                   <option key={s.id} value={s.id}>
@@ -264,7 +291,7 @@ function CreateInviteForm({ targets, onCreated }: { targets: Targets; onCreated:
               </select>
             )}
             {reusable && (
-              <select className={`${field} w-auto`} value={uses} onChange={(e) => setUses(Number(e.target.value))}>
+              <select aria-label="Number of uses" className={`${field} w-auto`} value={uses} onChange={(e) => setUses(Number(e.target.value))}>
                 {USES.map((u, i) => (
                   <option key={u.label} value={i}>
                     {u.label}
@@ -281,7 +308,7 @@ function CreateInviteForm({ targets, onCreated }: { targets: Targets; onCreated:
       </div>
       {link && (
         <div className="flex items-center gap-2">
-          <input readOnly className={field} value={link} onFocus={(e) => e.currentTarget.select()} />
+          <input aria-label="Invite link" readOnly className={field} value={link} onFocus={(e) => e.currentTarget.select()} />
           <button type="button" className={ghost} onClick={() => void navigator.clipboard?.writeText(link).catch(() => {})}>
             Copy
           </button>
