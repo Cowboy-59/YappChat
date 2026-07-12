@@ -27,11 +27,11 @@ export default async function AuthenticatedLayout({ children }: { children: Reac
   ]);
 
   return (
-    <div className="flex flex-1">
+    <div className="flex h-[100dvh] overflow-hidden">
       <AppRealtime currentSessionId={sessionId} />
       <IconRail user={user} org={org} orgs={orgs} avatarSrc={avatarSrc} />
       <AppSidebar />
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 min-h-0 flex-1 flex-col overflow-y-auto">
         {!user.emailverified ? (
           <div className="px-6 pt-4">
             <EmailVerifyNotice />

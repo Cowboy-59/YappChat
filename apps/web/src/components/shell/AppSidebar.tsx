@@ -109,11 +109,11 @@ export function AppSidebar() {
       )}
 
       <aside
-        className={`hidden shrink-0 overflow-hidden border-r border-border bg-card transition-[width] duration-300 ease-in-out md:flex ${
-          open ? "w-60" : "w-0 border-r-0"
+        className={`app-rail hidden shrink-0 overflow-hidden border-r border-border bg-card transition-[width] duration-300 ease-in-out md:flex ${
+          open ? "w-64" : "w-0 border-r-0"
         }`}
       >
-        <div className="flex h-full w-60 flex-col">
+        <div className="flex h-full w-64 flex-col">
           <div className="flex items-center justify-between px-4 py-4">
             <Link href="/app" className="whitespace-nowrap text-lg font-bold text-foreground">
               YappChatt
@@ -192,15 +192,13 @@ export function AppSidebar() {
 
 // ── Pieces ────────────────────────────────────────────────────────────────────
 
-const rowBase = "flex items-center gap-2 rounded-lg px-3 py-2 text-sm";
-
 function TopLink({ href, label, icon: Icon, active }: { href: string; label: string; icon: LucideIcon; active: boolean }) {
   return (
     <Link
       href={href}
-      className={`${rowBase} font-medium ${active ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+      className={`flex items-center gap-2 rounded-lg px-3 py-2 text-lg font-bold ${active ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
     >
-      <Icon className="h-4 w-4 shrink-0" />
+      <Icon className="h-5 w-5 shrink-0" />
       <span className="truncate">{label}</span>
     </Link>
   );
@@ -225,9 +223,9 @@ function SectionHeader({
 }) {
   return (
     <div className={`group flex items-center rounded-lg ${active ? "text-foreground" : "text-muted-foreground"}`}>
-      <button onClick={onToggle} className={`${rowBase} min-w-0 flex-1 font-medium hover:bg-muted hover:text-foreground`}>
+      <button onClick={onToggle} className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-3 py-2 text-lg font-bold hover:bg-muted hover:text-foreground">
         <ChevronRight className={`h-3.5 w-3.5 shrink-0 transition-transform ${open ? "rotate-90" : ""}`} />
-        <Icon className="h-4 w-4 shrink-0" />
+        <Icon className="h-5 w-5 shrink-0" />
         <span className="truncate">{label}</span>
       </button>
       {addHref && (

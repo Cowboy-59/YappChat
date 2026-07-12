@@ -61,6 +61,10 @@ export const presentations = ycSchema.table(
     // Hard cap (spec 071 v1 = 100); joins beyond it are refused ("room full").
     maxattendees: integer("maxattendees").notNull().default(100),
     status: presentationStatusEnum("status").notNull().default("scheduled"),
+    // FR-023 — captured LiveKit egress lifecycle (recording control/observability).
+    egressid: text("egressid"),
+    egressstatus: text("egressstatus"), // starting | active | ended | failed
+    egresserror: text("egresserror"),
     startedat: timestamp("startedat", { withTimezone: true }),
     endedat: timestamp("endedat", { withTimezone: true }),
     createdat: timestamp("createdat", { withTimezone: true }).notNull().defaultNow(),
@@ -148,6 +152,7 @@ export const presentationrecordings = ycSchema.table(
       .notNull()
       .references(() => presentations.id, { onDelete: "cascade" }),
     mediaurl: text("mediaurl").notNull(), // S3 key from LiveKit egress
+    egressid: text("egressid"), // FR-023 — dedup key: webhook + pull-on-End must not double-insert
     durationms: integer("durationms"),
     status: recordingStatusEnum("status").notNull().default("processing"),
     // Retained indefinitely; soft-deleted on host delete (no auto-expiry).
@@ -163,6 +168,29 @@ export type PresentationInviteRow = typeof presentationinvites.$inferSelect;
 export type PresentationAttendeeRow = typeof presentationattendees.$inferSelect;
 export type PresentationCaptionRow = typeof presentationcaptions.$inferSelect;
 export type PresentationRecordingRow = typeof presentationrecordings.$inferSelect;
+
+/**
+ * Spec 071 FR-028 — persisted in-session chat. Previously chat was live-only
+ * (published over the videoroom scope + LiveKit data channel, never stored); this
+ * captures it so the replay can show a transcript + AI summary. `userid` is null
+ * for guests; `name` is the display name at send time.
+ */
+export const presentationchatmessages = ycSchema.table(
+  "presentationchatmessages",
+  {
+    id: uuid("id").primaryKey(),
+    presentationid: uuid("presentationid")
+      .notNull()
+      .references(() => presentations.id, { onDelete: "cascade" }),
+    userid: uuid("userid"),
+    name: text("name").notNull(),
+    text: text("text").notNull(),
+    createdat: timestamp("createdat", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("presentationchatmessages_presentationid_idx").on(t.presentationid)],
+);
+
+export type PresentationChatMessageRow = typeof presentationchatmessages.$inferSelect;
 export type PresentationVisibility = (typeof presentationVisibilityEnum.enumValues)[number];
 export type PresentationStatus = (typeof presentationStatusEnum.enumValues)[number];
 export type PresentationAttendeeRole = (typeof presentationAttendeeRoleEnum.enumValues)[number];

@@ -58,6 +58,26 @@ export async function presignGet(key: string): Promise<string> {
   return getSignedUrl(s3(), new GetObjectCommand({ Bucket: BUCKET, Key: key }), { expiresIn: READ_TTL_SECONDS });
 }
 
+const SHARE_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days — S3 SigV4 max; a link you can send or paste elsewhere.
+
+/**
+ * A longer-lived presigned GET URL meant for SHARING a stored object (e.g. a
+ * recording) with someone or pasting into another app. Optionally forces a
+ * download with a friendly filename via Content-Disposition.
+ */
+export async function presignShare(key: string, opts?: { downloadName?: string }): Promise<string> {
+  if (!BUCKET) throw new Error("S3_BUCKET not configured");
+  return getSignedUrl(
+    s3(),
+    new GetObjectCommand({
+      Bucket: BUCKET,
+      Key: key,
+      ...(opts?.downloadName ? { ResponseContentDisposition: `attachment; filename="${opts.downloadName}"` } : {}),
+    }),
+    { expiresIn: SHARE_TTL_SECONDS },
+  );
+}
+
 /** A stored attachment, ready for the client to render or download. */
 export type Attachment = { url: string; name: string; isImage: boolean };
 

@@ -2,9 +2,11 @@ import { and, count, desc, eq, inArray, isNotNull, isNull, ne, or } from "drizzl
 import { uuidv7 } from "uuidv7";
 import { getDb } from "../db/client";
 import { communitymembers } from "../db/communities-schema";
+import { orgmemberships } from "../db/auth-schema";
 import {
   presentationattendees,
   presentationcaptions,
+  presentationchatmessages,
   presentationinvites,
   presentations,
   presentationrecordings,
@@ -25,9 +27,9 @@ import {
   publishParticipantLeft,
   publishPresentationStatus,
 } from "./realtime";
-import { transcribeAudio, translateText } from "./captions";
-import { closeRoom, startRoomEgress } from "./livekit";
-import { presignGet, storageConfigured } from "../storage/s3";
+import { summarizeChat, transcribeAudio, translateText } from "./captions";
+import { closeRoom, getEgressInfo, normalizeS3Key, startRoomEgress } from "./livekit";
+import { presignGet, presignShare, storageConfigured } from "../storage/s3";
 import { EngineError } from "../engine/errors";
 
 /**
@@ -60,6 +62,28 @@ async function isCommunityMember(communityid: string, userid: string): Promise<b
     .where(and(eq(communitymembers.communityid, communityid), eq(communitymembers.userid, userid)))
     .limit(1);
   return Boolean(m);
+}
+
+/**
+ * Company-admin oversight: is `adminUserId` an owner/admin of an org the host
+ * belongs to? Used to let a company admin review a member's ENDED presentation
+ * recording (not to grant live access).
+ */
+async function isCompanyAdminOverHost(adminUserId: string | null, hostUserId: string): Promise<boolean> {
+  if (!adminUserId || adminUserId === hostUserId) return false;
+  const db = getDb();
+  if (!db) return false;
+  const adminOrgs = await db
+    .select({ orgid: orgmemberships.orgid })
+    .from(orgmemberships)
+    .where(and(eq(orgmemberships.userid, adminUserId), inArray(orgmemberships.role, ["owner", "admin"])));
+  if (adminOrgs.length === 0) return false;
+  const [shared] = await db
+    .select({ id: orgmemberships.id })
+    .from(orgmemberships)
+    .where(and(eq(orgmemberships.userid, hostUserId), inArray(orgmemberships.orgid, adminOrgs.map((o) => o.orgid))))
+    .limit(1);
+  return Boolean(shared);
 }
 
 function assertScheduleOrder(start: Date, end: Date | null | undefined): void {
@@ -119,6 +143,8 @@ export async function getPresentationForViewer(id: string, viewerid: string): Pr
   if (row.status === "canceled") throw new EngineError("presentation_not_found", 404);
   if (row.visibility === "public") return row;
   if (row.communityid && (await isCommunityMember(row.communityid, viewerid))) return row;
+  // Company admins may REVIEW a member's ended presentation (recording), not live.
+  if (row.status === "ended" && (await isCompanyAdminOverHost(viewerid, row.hostuserid))) return row;
   // Private + not host/community-member: invite-based access is resolved in T003.
   throw new EngineError("forbidden", 403);
 }
@@ -193,8 +219,18 @@ export async function startPresentation(id: string, actorid: string): Promise<Pr
       .set({ status: "live", startedat: p.startedat ?? new Date(), updatedat: new Date() })
       .where(eq(presentations.id, id));
     await publishPresentationStatus(id, "live");
-    // Begin recording egress (best-effort; no-op when egress isn't configured).
-    await startRoomEgress(id);
+    // FR-023 — begin recording egress and CAPTURE the outcome (id or error) so the
+    // host indicator reflects reality and we can pull the file on End.
+    const { egressId, error } = await startRoomEgress(id);
+    await db
+      .update(presentations)
+      .set({
+        egressid: egressId,
+        egressstatus: error ? "failed" : egressId ? "active" : null,
+        egresserror: error,
+        updatedat: new Date(),
+      })
+      .where(eq(presentations.id, id));
   }
   return loadPresentation(id);
 }
@@ -214,29 +250,98 @@ export async function endPresentation(id: string, actorid: string): Promise<Pres
   await publishPresentationStatus(id, "ended");
   // Close the LiveKit room (disconnects everyone, finalizes egress). Best-effort.
   await closeRoom(id);
+  // FR-023 — take control of the result: actively pull the finished egress file
+  // instead of waiting for the webhook. Best-effort + idempotent (dedup on
+  // egressid), so the webhook, if it also fires, won't create a duplicate.
+  await finalizeRecordingFromEgress(id).catch((err) =>
+    console.error("[presentations] finalizeRecordingFromEgress failed:", (err as Error).message),
+  );
   return loadPresentation(id);
+}
+
+/**
+ * FR-023 — pull the room's finished egress via ListEgress and register the
+ * recording. Runs on End (primary) and can be re-run safely (idempotent). Marks
+ * the presentation's egressstatus so the host indicator can settle.
+ */
+export async function finalizeRecordingFromEgress(id: string): Promise<void> {
+  const db = getDb();
+  if (!db) return;
+  const p = await loadPresentation(id);
+  const info = await getEgressInfo(id, p.egressid);
+  if (!info) return;
+  if (info.fileKey) {
+    await registerRecording(id, { mediaurl: info.fileKey, durationms: info.durationms, egressid: p.egressid ?? undefined });
+  }
+  const settled = info.status === "EGRESS_COMPLETE" ? "ended" : info.status === "EGRESS_FAILED" || info.status === "EGRESS_ABORTED" ? "failed" : p.egressstatus;
+  await db
+    .update(presentations)
+    .set({ egressstatus: settled, egresserror: info.error ?? p.egresserror, updatedat: new Date() })
+    .where(eq(presentations.id, id));
 }
 
 // ── Recording + replay (T008 — FR-018/019/020/022) ──────────────────────────────
 
-/** Register a finished recording (called by the LiveKit egress webhook). */
+/**
+ * Register a finished recording. Called by BOTH the pull-on-End path and the
+ * LiveKit egress webhook, so it is idempotent by `egressid`: a second call for
+ * the same egress returns the existing row instead of inserting a duplicate.
+ * `mediaurl` is normalized to a bare S3 key so replay's presign always resolves.
+ */
 export async function registerRecording(
   presentationid: string,
-  input: { mediaurl: string; durationms?: number | null },
+  input: { mediaurl: string; durationms?: number | null; egressid?: string },
 ): Promise<PresentationRecordingRow> {
   const db = getDb();
   if (!db) throw new EngineError("db_unavailable", 503);
   await loadPresentation(presentationid); // 404 if the presentation is gone
+
+  if (input.egressid) {
+    const [existing] = await db
+      .select()
+      .from(presentationrecordings)
+      .where(eq(presentationrecordings.egressid, input.egressid))
+      .limit(1);
+    if (existing) {
+      // A later pull/webhook may carry the FINAL duration (the first register can
+      // land before egress reports it → 0). Backfill it without creating a dup.
+      if (input.durationms && input.durationms > 0 && !existing.durationms) {
+        await db
+          .update(presentationrecordings)
+          .set({ durationms: input.durationms })
+          .where(eq(presentationrecordings.id, existing.id));
+        return { ...existing, durationms: input.durationms };
+      }
+      return existing;
+    }
+  }
+
   const id = uuidv7();
   await db.insert(presentationrecordings).values({
     id,
     presentationid,
-    mediaurl: input.mediaurl,
+    mediaurl: normalizeS3Key(input.mediaurl),
+    egressid: input.egressid ?? null,
     durationms: input.durationms ?? null,
     status: "ready",
   });
   const [row] = await db.select().from(presentationrecordings).where(eq(presentationrecordings.id, id)).limit(1);
   return row;
+}
+
+/** FR-023 — host-only egress status for the in-room recording indicator. */
+export async function egressStatusFor(
+  presentationid: string,
+  actorid: string,
+): Promise<{ egressstatus: string | null; egressid: string | null; egresserror: string | null; startedat: string | null }> {
+  const p = await loadPresentation(presentationid);
+  if (p.hostuserid !== actorid) throw new EngineError("not_host", 403);
+  return {
+    egressstatus: p.egressstatus ?? null,
+    egressid: p.egressid ?? null,
+    egresserror: p.egresserror ?? null,
+    startedat: p.startedat ? p.startedat.toISOString() : null,
+  };
 }
 
 /**
@@ -247,10 +352,124 @@ export async function registerRecording(
 export async function getReplay(
   presentationid: string,
   viewerid: string | null,
-): Promise<{ recording: { id: string; durationms: number | null; createdat: Date }; playbackUrl: string | null }> {
+): Promise<{
+  status: "ready" | "processing" | "none";
+  playbackUrl: string | null;
+  recording?: { id: string; durationms: number | null; createdat: Date };
+}> {
   await assertCanViewPresentation(presentationid, viewerid);
   const db = getDb();
   if (!db) throw new EngineError("db_unavailable", 503);
+
+  const findReady = async () =>
+    (
+      await db
+        .select()
+        .from(presentationrecordings)
+        .where(
+          and(
+            eq(presentationrecordings.presentationid, presentationid),
+            eq(presentationrecordings.status, "ready"),
+            isNull(presentationrecordings.deletedat),
+          ),
+        )
+        .orderBy(desc(presentationrecordings.createdat))
+        .limit(1)
+    )[0];
+
+  let rec = await findReady();
+  if (!rec) {
+    // Egress is likely still finalizing/uploading — pull it now (registers the file
+    // once LiveKit reports COMPLETE), then re-check. Idempotent + best-effort.
+    await finalizeRecordingFromEgress(presentationid).catch(() => {});
+    rec = await findReady();
+  }
+  if (rec) {
+    const playbackUrl = storageConfigured() ? await presignGet(rec.mediaurl).catch(() => null) : null;
+    return { status: "ready", playbackUrl, recording: { id: rec.id, durationms: rec.durationms, createdat: rec.createdat } };
+  }
+
+  // No recording yet. If egress started and hasn't failed, one is still coming
+  // (client shows "Processing…" and polls); otherwise there's genuinely none.
+  const p = await loadPresentation(presentationid);
+  const stillComing = Boolean(p.egressid) && p.egressstatus !== "failed";
+  return { status: stillComing ? "processing" : "none", playbackUrl: null };
+}
+
+/** ms → WebVTT timestamp "HH:MM:SS.mmm". */
+function vttTime(ms: number): string {
+  const t = Math.max(0, Math.floor(ms));
+  const h = Math.floor(t / 3_600_000);
+  const m = Math.floor((t % 3_600_000) / 60_000);
+  const s = Math.floor((t % 60_000) / 1000);
+  const mm = t % 1000;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}.${String(mm).padStart(3, "0")}`;
+}
+
+/**
+ * FR-028/029 — build a WebVTT subtitle track for a recording in the requested
+ * language. The base spoken language uses the saved caption text as-is; other
+ * languages translate each line (GROQ) so the replay viewer can switch languages.
+ * Access-scoped like the replay.
+ */
+export async function buildCaptionsVtt(presentationid: string, viewerid: string | null, lang: string): Promise<string> {
+  const p = await assertCanViewPresentation(presentationid, viewerid);
+  const db = getDb();
+  if (!db) return "WEBVTT\n";
+  const rows = await db
+    .select({ text: presentationcaptions.text, offsetms: presentationcaptions.offsetms, language: presentationcaptions.language })
+    .from(presentationcaptions)
+    .where(eq(presentationcaptions.presentationid, presentationid))
+    .orderBy(presentationcaptions.createdat);
+  if (rows.length === 0) return "WEBVTT\n";
+
+  // Resolve cue text in the target language (dedupe identical lines before translating).
+  const base = p.spokenlanguage;
+  let texts = rows.map((r) => r.text);
+  if (lang !== base) {
+    const unique = [...new Set(texts)];
+    const map = new Map<string, string>();
+    await Promise.all(
+      unique.map(async (t) => {
+        map.set(t, await translateText(t, base, lang).catch(() => t));
+      }),
+    );
+    texts = texts.map((t) => map.get(t) ?? t);
+  }
+
+  // Cue timings: use offsetms when present; each cue ends at the next cue's start
+  // (or +4s for the last). Fall back to a steady 4s cadence when offsets are absent.
+  const DEFAULT_MS = 4000;
+  const starts = rows.map((r, i) => (r.offsetms != null ? r.offsetms : i * DEFAULT_MS));
+  const lines = ["WEBVTT", ""];
+  for (let i = 0; i < rows.length; i++) {
+    const start = starts[i];
+    const end = i + 1 < rows.length && starts[i + 1] > start ? starts[i + 1] : start + DEFAULT_MS;
+    const text = texts[i].replace(/-->/g, "→").replace(/\r?\n/g, " ").trim();
+    lines.push(`${vttTime(start)} --> ${vttTime(end)}`, text, "");
+  }
+  return lines.join("\n");
+}
+
+/** Safe-ish filename from a title (for the shared download's Content-Disposition). */
+function recordingFileName(title: string, createdat: Date): string {
+  const slug = title.trim().replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "recording";
+  const date = createdat.toISOString().slice(0, 10);
+  return `${slug}-${date}.mp4`;
+}
+
+/**
+ * A long-lived (7-day) shareable link to the recording's S3 object — for sending
+ * to someone or pasting into another app (e.g. wxKanban). Access-scoped exactly
+ * like the replay; also returns the bare S3 key for internal reference.
+ */
+export async function getRecordingShareLink(
+  presentationid: string,
+  viewerid: string | null,
+): Promise<{ url: string | null; key: string | null; filename: string | null }> {
+  const p = await assertCanViewPresentation(presentationid, viewerid);
+  const db = getDb();
+  if (!db) return { url: null, key: null, filename: null };
   const [rec] = await db
     .select()
     .from(presentationrecordings)
@@ -263,9 +482,10 @@ export async function getReplay(
     )
     .orderBy(desc(presentationrecordings.createdat))
     .limit(1);
-  if (!rec) throw new EngineError("recording_not_found", 404);
-  const playbackUrl = storageConfigured() ? await presignGet(rec.mediaurl).catch(() => null) : null;
-  return { recording: { id: rec.id, durationms: rec.durationms, createdat: rec.createdat }, playbackUrl };
+  if (!rec) return { url: null, key: null, filename: null };
+  const filename = recordingFileName(p.title, rec.createdat);
+  const url = storageConfigured() ? await presignShare(rec.mediaurl, { downloadName: filename }).catch(() => null) : null;
+  return { url, key: rec.mediaurl, filename };
 }
 
 /** Host deletes a recording — soft delete; no longer playable, downloadable, or listed. */
@@ -362,8 +582,43 @@ export async function sendChat(
   text: string,
 ): Promise<void> {
   await assertCanViewPresentation(presentationid, sender.userid);
-  if (!text.trim()) return;
-  await publishChat(presentationid, { fromuserid: sender.userid, fromname: sender.name, text: text.trim() });
+  const body = text.trim();
+  if (!body) return;
+  // FR-028 — persist for the replay transcript/summary (best-effort), then publish live.
+  const db = getDb();
+  if (db) {
+    await db
+      .insert(presentationchatmessages)
+      .values({ id: uuidv7(), presentationid, userid: sender.userid, name: sender.name, text: body })
+      .catch(() => {});
+  }
+  await publishChat(presentationid, { fromuserid: sender.userid, fromname: sender.name, text: body });
+}
+
+/** FR-028 — the saved chat transcript for a presentation (access-scoped), oldest first. */
+export async function listPresentationChat(
+  presentationid: string,
+  viewerid: string | null,
+): Promise<Array<{ name: string; text: string; createdat: string }>> {
+  await assertCanViewPresentation(presentationid, viewerid);
+  const db = getDb();
+  if (!db) return [];
+  const rows = await db
+    .select({ name: presentationchatmessages.name, text: presentationchatmessages.text, createdat: presentationchatmessages.createdat })
+    .from(presentationchatmessages)
+    .where(eq(presentationchatmessages.presentationid, presentationid))
+    .orderBy(presentationchatmessages.createdat);
+  return rows.map((r) => ({ name: r.name, text: r.text, createdat: r.createdat.toISOString() }));
+}
+
+/** FR-028 — chat transcript + a short AI recap for the replay screen (access-scoped). */
+export async function summarizePresentationChat(
+  presentationid: string,
+  viewerid: string | null,
+): Promise<{ summary: string | null; count: number; messages: Array<{ name: string; text: string; createdat: string }> }> {
+  const messages = await listPresentationChat(presentationid, viewerid);
+  const summary = messages.length ? await summarizeChat(messages).catch(() => null) : null;
+  return { summary, count: messages.length, messages };
 }
 
 async function findActiveAttendee(
@@ -641,7 +896,10 @@ export async function joinPresentation(
   const p = await loadPresentation(presentationid);
 
   if (p.status === "canceled") throw new EngineError("presentation_not_found", 404);
-  if (p.status === "ended") throw new EngineError("presentation_ended", 409, "this presentation has ended");
+  // ENDED presentations stay openable in VIEW-ONLY replay mode (FR-019) so the host
+  // and authorized viewers (community members, incl. owners/admins) can review the
+  // recording — no "could not join". Access uses the SAME gate as live; live media
+  // (LiveKit) is nulled for ended in the join route.
 
   const isHost = input.userid != null && input.userid === p.hostuserid;
   const role: "host" | "attendee" = isHost ? "host" : "attendee";
@@ -658,13 +916,16 @@ export async function joinPresentation(
       const member = p.communityid ? await isCommunityMember(p.communityid, input.userid) : false;
       const invite = input.token ? await resolveInvite(input.token, presentationid) : null;
       const inviteOk = invite != null && (invite.inviteduserid == null || invite.inviteduserid === input.userid);
-      if (!member && !inviteOk) throw new EngineError("forbidden", 403, "an invite is required to join this presentation");
+      // A company admin may open an ENDED presentation to review the recording.
+      const companyAdmin = p.status === "ended" && (await isCompanyAdminOverHost(input.userid, p.hostuserid));
+      if (!member && !inviteOk && !companyAdmin) throw new EngineError("forbidden", 403, "an invite is required to join this presentation");
     }
   }
 
   // Capacity cap (FR-007); the host never counts against it. Best-effort under
-  // concurrency — a small over-admit is tolerated for v1.
-  if (!isHost) {
+  // concurrency — a small over-admit is tolerated for v1. Skipped for ended
+  // presentations (replay viewers don't consume a live seat).
+  if (!isHost && p.status !== "ended") {
     const [{ n }] = await db
       .select({ n: count() })
       .from(presentationattendees)

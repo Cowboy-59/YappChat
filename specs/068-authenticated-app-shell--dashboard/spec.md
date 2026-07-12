@@ -128,3 +128,10 @@ The return-url allow-list in `src/lib/auth/return-url.ts` MUST also permit /comm
 - **Implementation**: T001–T006 built in `apps/web`; migration 0010 applied. Shell later restructured (2026-06-27) to the IconRail + accordion AppSidebar form described in FR-002, superseding the original flat sidebar.
 - **Verification (T007)**: static checks green 2026-06-30 — `tsc --noEmit`, `eslint`, and `vitest` (111/111). Live e2e last passed 2026-06-23 (8/8), before the 06-27 restructure; a fresh live e2e is the only outstanding item.
 - **Note**: this spec.md and plan.md were degraded to template boilerplate by an earlier regeneration and were reconstructed on 2026-06-30 from the tasks breakdown and the shipped implementation.
+
+## Delta — Implemented 2026-07-12 (Surface company invite on the dashboard)
+
+Spec-first (see [proposed delta](./PROPOSED-DELTA-surface-company-invite.md)). Purely a discoverability change over an already-shipped spec 011 capability — **no new invite logic**.
+
+- **Invite a colleague** — the dashboard home (`/app`) shows a quick-action card when the caller's **active org is corporate** and their **role is owner/admin** (same gate as `/members`). Routes to `/members` (single canonical org-invite surface). Reuses spec 011; no backend change.
+- **Invite users to a space** (added 2026-07-12 per user feedback) — an **"Invite to a space"** control on `/app` for any user who **owns/moderates a community** (holds `invite:create`). Pick a community + space (or Whole community) + uses, and generate a shareable FR-021 link — the intended flow is e.g. wxKanban inviting users into its **Public** or **Support** chat without opening the community Manage panel. Backed by `listMyInviteTargets(userid)` (owner/moderator communities + spaces, reusable eligibility) passed server-side into `DashboardSpaceInvite`; posts to the existing 017 FR-021 endpoints (`POST /api/communities/:id[/spaces/:spaceid]/invites`). Admin/corp-only spaces stay single-use.

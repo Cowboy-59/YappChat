@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { engineContext, engineError, readJson } from "@/lib/engine/http";
-import { isConversationMember, listMessages, sendMessage } from "@/lib/engine/service";
+import { conversationRole, isConversationMember, listMessages, sendMessage } from "@/lib/engine/service";
 import { maybeAutoAnswerForConversation } from "@/lib/communities/spaceai-answer";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +16,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   if (!(await isConversationMember(id, ctx.user.id))) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
-  return NextResponse.json({ messages: await listMessages(id) });
+  const [messages, myrole] = await Promise.all([listMessages(id), conversationRole(id, ctx.user.id)]);
+  return NextResponse.json({ messages, myrole });
 }
 
 /** POST /api/engine/conversations/:id/messages { content } — send outbound (members only). */

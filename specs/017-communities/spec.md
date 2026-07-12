@@ -126,11 +126,25 @@ An owner/moderator (capability `invite:create`) may mint a **single-use, expirin
 - **Privacy:** the resolve/preview endpoint is auth-gated and token-keyed (24 random bytes, unguessable, not enumerable); it reveals community + space names only to a signed-in holder of the link.
 - **Audit:** `space_invite_created` and `space_invite_redeemed` written to `communityauditlog`.
 
+### FR-021 — Reusable (multi-use) invite links
+An owner/moderator (capability `invite:create`) may mint a **reusable** invite link — community-wide (FR-004) or space-scoped (FR-020) — that admits **multiple** recipients until it reaches a **use cap** or **expiry**, whichever comes first. Same token-first URL shape, landing page, and policy-override semantics as FR-020; the only change is that one token can be redeemed more than once. A single-use link is just `maxuses = 1` — the FR-020 behavior becomes a special case of this FR, not a separate code path.
+
+- **Use cap:** the minter chooses `maxuses` (**default 100**), or **unlimited** (`NULL`). Redemption is valid while `usecount < maxuses` (or unlimited) **and** unexpired **and** not revoked.
+- **Expiry:** **required** (`expiresat`), max window **90 days**. No perpetual links; revoke is the manual kill switch.
+- **Strict-space restriction:** reusable links are allowed **only for `open` / `approval` spaces**. `adminonly` and `corponly` spaces stay **single-use only** — the server forces `maxuses = 1` and rejects any larger/unlimited value (`invite_not_reusable`). This bounds the blast radius of the policy-override: a shared link can never mass-admit strangers into an admin or corp-only space.
+- **Idempotent for existing members:** if the redeemer is already a member of the target space/community, redemption is a **no-op success** and does **not** consume a use.
+- **Revocable:** owner/mod (capability `invite:create`) may revoke a standing link at any time, killing it regardless of remaining uses.
+- **Preview:** the resolve/preview endpoint stays non-consuming and may surface remaining uses to the holder.
+- **Audit:** one `space_invite_redeemed` / `invite_redeemed` row **per redemption** (attributed to the redeemer); `space_invite_created` on mint; new `space_invite_revoked` on revoke.
+- **Redeemer log:** each redemption also writes a `communityinviteredemptions` row (inviteid, userid, redeemedat) for analytics/abuse review; the unique `(inviteid, userid)` also backs the already-redeemed no-op.
+
 ## Data Model
 
 **New tables (017):** `communities`, `communitymembers` (role + availability only — *not* a profile), `spaces` (references a 001 conversation), `communityinvites`, `joinrequests`, `messagetranslations` (cache, unique `(messageid,langcode)`), `messageembeddings` (pgvector), `communityauditlog` (append-only).
 
 **FR-020 change:** `communityinvites` gains a **nullable `spaceid`** (FK → `spaces`, `ON DELETE cascade`, indexed): `NULL` = community-wide invite (FR-004, unchanged); set = per-space invite (FR-020). One table, one hashed-token/redemption path. Migration **0021**.
+
+**FR-021 change:** `communityinvites` gains **`maxuses`** (`integer` NULL = unlimited; default `1` = single-use) + **`usecount`** (`integer NOT NULL DEFAULT 0`); `usedat` is repurposed as a "dead" marker (set when the cap is reached or on revoke). New table **`communityinviteredemptions`** (`inviteid` FK → `communityinvites` `ON DELETE cascade`, `userid`, `redeemedat`, unique `(inviteid,userid)`) logs each redemption and backs the already-redeemed no-op. Migration **0025**; existing rows backfilled to `maxuses=1` (single-use unchanged).
 
 **New tables (017 / FR-019 per-space support AI):** `spaceaiconfig` (1:1 with a space — `enabled`, `model`, `autoanswer`, `lastindexedat`); `spaceaisources` (the website URL + uploaded-doc rows for a space — `kind` `website|document|history`, `url`/`storagekey`, `status`, `crawledat`); `spaceaichunks` (pgvector chunk embeddings of source text, namespaced per space, citing back to a `spaceaisources` row + anchor). Reuses the FR-015 embedding/PA path; **pgvector** required.
 
@@ -171,3 +185,12 @@ Spec-first (this FR was written before the code). Adds shareable, single-use lin
 - **Routes** — `POST /api/communities/:id/spaces/:spaceid/invites` (capability `invite:create`), `GET /api/invites/:token` (auth-gated resolve), `POST /api/invites/redeem` (auth-gated consume).
 - **UI** — landing page `/communities/join?token=…` (unauth → `/signin?return=…`, already allow-listed); per-space **"Generate invite link"** control (full clickable URL + Copy) in `SpacesManager` (`components/dashboard/OwnedCommunitiesManager.tsx`).
 - **Audit** — `space_invite_created` / `space_invite_redeemed` in `communityauditlog`.
+
+## Delta — Implemented 2026-07-11 (Reusable multi-use invite links, FR-021)
+
+Spec-first (FR-021 + the [proposed delta](./PROPOSED-DELTA-multiuse-invites.md) written and approved before code). Turns the single-use link into a reusable one, capped and revocable, with a strict-space safety restriction.
+
+- **Schema** — `communityinvites` += `maxuses` (`integer` NULL = unlimited) + `usecount` (`integer NOT NULL DEFAULT 0`); `usedat` now also means "dead" (cap reached / revoked). New table `communityinviteredemptions` (`inviteid`/`userid`/`redeemedat`, unique `(inviteid,userid)`). Migration **`0025_multiuse_invites.sql`**; existing rows backfilled to `maxuses=1`.
+- **Backend** (`lib/communities/membership.ts`) — `createInvite`/`createSpaceInvite` take an optional `maxuses` (default 1; **strict-space guard** forces 1 for `adminonly`/`corponly`, else `invite_not_reusable`); `redeemInvite` now does a **bounded atomic increment** (`WHERE usedat IS NULL AND (maxuses IS NULL OR usecount < maxuses)`), logs a `communityinviteredemptions` row, and **no-ops (no use burned) if already a member**; `resolveInvite` reports `remaining`; new `revokeInvite`; new `listInvites`.
+- **Routes** — community + space `POST …/invites` accept `{ maxuses }`; `GET …/invites` lists active links; `POST /api/communities/:id/invites/:inviteid/revoke` revokes (community-scoped for authz). All capability `invite:create`.
+- **UI** — the `SpacesManager` invite control gains a **uses** selector (Single-use / 25 / 100 / Unlimited — reusable options hidden for admin/corp spaces), shows remaining uses on active links, and a **Revoke** button.

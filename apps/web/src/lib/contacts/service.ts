@@ -5,9 +5,12 @@ import { users } from "../db/auth-schema";
 import { contactinvites, contacts, type ContactRow } from "../db/contacts-schema";
 import { channels, conversationmembers, conversations, messages } from "../db/engine-schema";
 import { addConversationMember, createConversation, postSystemMessage, registerChannel } from "../engine/service";
+import { resolveAvatarUrl } from "../account/avatar-resolve";
 import { generateToken, hashToken } from "../auth/crypto";
 import { sendEmail } from "../auth/mailer";
 import { writeAudit } from "../auth/audit";
+import { publishEvent } from "../ws/broker";
+import { scopes, WSEventType } from "../ws/events";
 import { getSiteUrl } from "../site";
 import { EngineError } from "../engine/errors";
 import { isUniqueViolation } from "../db/errors";
@@ -243,18 +246,18 @@ export async function respondToContact(contactid: string, userid: string, accept
 }
 
 /** Accepted contacts of a user (the other party + the DM conversation). */
-export async function listContacts(userid: string): Promise<Array<UserLite & { conversationid: string | null }>> {
+export async function listContacts(userid: string): Promise<Array<UserLite & { conversationid: string | null; avatarurl: string | null }>> {
   const db = getDb();
   if (!db) return [];
   const rows = await db
     .select({ requesterid: contacts.requesterid, addresseeid: contacts.addresseeid, conversationid: contacts.conversationid })
     .from(contacts)
     .where(and(eq(contacts.status, "accepted"), or(eq(contacts.requesterid, userid), eq(contacts.addresseeid, userid))));
-  const out: Array<UserLite & { conversationid: string | null }> = [];
+  const out: Array<UserLite & { conversationid: string | null; avatarurl: string | null }> = [];
   for (const r of rows) {
     const otherId = r.requesterid === userid ? r.addresseeid : r.requesterid;
-    const [u] = await db.select({ id: users.id, displayname: users.displayname, email: users.email }).from(users).where(eq(users.id, otherId)).limit(1);
-    if (u) out.push({ ...u, conversationid: r.conversationid });
+    const [u] = await db.select({ id: users.id, displayname: users.displayname, email: users.email, avatarurl: users.avatarurl }).from(users).where(eq(users.id, otherId)).limit(1);
+    if (u) out.push({ id: u.id, displayname: u.displayname, email: u.email, avatarurl: await resolveAvatarUrl(u.avatarurl), conversationid: r.conversationid });
   }
   return out;
 }
@@ -432,7 +435,71 @@ export async function acceptContactInvite(
 
   const conversationid = await getOrCreateDirectConversation(inv.inviterid, user.id);
   await upsertAcceptedContact(db, inv.inviterid, user.id, conversationid);
+  await notifyInviterOfAccept(inv.inviterid, user.id, conversationid);
   return { ok: true };
+}
+
+/**
+ * FR-025 — notify an inviter that their invite/request was accepted. Live via the
+ * inviter's `user:{id}` WS scope (sidebar refreshes) + a durable system line in the
+ * shared DM (visible whenever they open the chat, even if they were offline).
+ */
+async function notifyInviterOfAccept(inviterid: string, accepterId: string, conversationid: string): Promise<void> {
+  const db = getDb();
+  if (!db) return;
+  const accepterName = await displayName(db, accepterId);
+  await postSystemMessage({
+    conversationid,
+    authorid: CONTACT_SYSTEM_AUTHOR,
+    authorname: accepterName,
+    content: `${accepterName} accepted your invitation — you're now connected.`,
+  }).catch(() => {});
+  await publishEvent({
+    type: WSEventType.ContactAccepted,
+    scope: scopes.user(inviterid),
+    payload: { conversationid, userid: accepterId, name: accepterName },
+  }).catch(() => {});
+}
+
+/**
+ * FR-024 — auto-accept any pending email invite whose address matches this now-
+ * verified user, creating the contact + DM and notifying each inviter. Called at
+ * every point the user's email becomes verified (email-verify link, SSO provision).
+ * Idempotent: the consume-first claim means the link-click path can't double-accept.
+ * Returns the number of invites accepted.
+ */
+export async function autoAcceptContactInvitesForUser(userId: string): Promise<number> {
+  const db = getDb();
+  if (!db) return 0;
+  const [u] = await db
+    .select({ email: users.email, verified: users.emailverifiedat })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  if (!u || !u.verified) return 0; // guard: only for verified emails (matches link-accept)
+
+  const pending = await db
+    .select()
+    .from(contactinvites)
+    .where(and(ilike(contactinvites.email, u.email), isNull(contactinvites.consumedat), gt(contactinvites.expiresat, new Date())));
+
+  let accepted = 0;
+  for (const inv of pending) {
+    if (inv.inviterid === userId) continue; // never self-connect
+    // Consume-first atomic claim: only the winner proceeds (races the link path).
+    const claimed = await db
+      .update(contactinvites)
+      .set({ consumedat: new Date() })
+      .where(and(eq(contactinvites.id, inv.id), isNull(contactinvites.consumedat)))
+      .returning({ id: contactinvites.id });
+    if (claimed.length === 0) continue;
+
+    const conversationid = await getOrCreateDirectConversation(inv.inviterid, userId);
+    await upsertAcceptedContact(db, inv.inviterid, userId, conversationid);
+    await notifyInviterOfAccept(inv.inviterid, userId, conversationid);
+    accepted++;
+  }
+  return accepted;
 }
 
 /**

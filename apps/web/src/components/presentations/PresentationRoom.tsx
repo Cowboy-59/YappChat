@@ -5,6 +5,7 @@ import { Room, RoomEvent, Track, type RemoteTrack } from "livekit-client";
 import { SUPPORTED_LANGUAGES } from "@/lib/account/languages";
 import { ThemeToggle } from "@/components/landing/ThemeToggle";
 import { ReplayPlayer } from "./ReplayPlayer";
+import { ReplayChatSummary } from "./ReplayChatSummary";
 
 type Joined = {
   attendee: { id: string; role: "host" | "attendee" };
@@ -18,6 +19,14 @@ type DataMsg =
   | { type: "chat"; from: string; text: string };
 
 const btn = "inline-flex min-h-[34px] items-center rounded-lg px-3 text-sm font-semibold disabled:opacity-50";
+
+/** mm:ss elapsed from a millisecond duration (for the recording timer). */
+function fmtElapsed(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+}
+
+type EgressState = { egressstatus: string | null; egressid: string | null; egresserror: string | null; startedat: string | null };
 
 /** Spec 071 T009 — live presentation room: media + captions + chat + raise-hand + host controls. */
 export function PresentationRoom({
@@ -55,10 +64,74 @@ export function PresentationRoom({
   const capStreamRef = useRef<MediaStream | null>(null);
   const capTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const seq = useRef(0);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+  // Ctrl + mouse-wheel zoom level for the chat feed only (shared with the chats view).
+  const [zoom, setZoom] = useState(1);
+  // FR-023 — real egress/recording state (polled), + a 1s tick for the timer.
+  const [egress, setEgress] = useState<EgressState | null>(null);
+  const [, forceTick] = useState(0);
 
   const isHost = joined?.attendee.role === "host";
   const spoken = joined?.presentation.spokenlanguage ?? "en";
   const name = displayName ?? (guestname || "Guest");
+
+  // Restore the shared chat zoom level once on mount.
+  useEffect(() => {
+    try {
+      const saved = parseFloat(localStorage.getItem("chatZoom") ?? "");
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot restore from localStorage
+      if (saved >= 0.6 && saved <= 2) setZoom(saved);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  // Ctrl + mouse-wheel zooms ONLY the chat feed, not the whole room. React's
+  // onWheel is passive, so attach a native non-passive listener to preventDefault
+  // the browser page zoom.
+  useEffect(() => {
+    const el = chatScrollRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      setZoom((z) => {
+        const next = Math.min(2, Math.max(0.6, Math.round((z + (e.deltaY < 0 ? 0.1 : -0.1)) * 10) / 10));
+        try {
+          localStorage.setItem("chatZoom", String(next));
+        } catch {
+          /* ignore */
+        }
+        return next;
+      });
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [joined]);
+
+  // FR-023 — host-only: poll real egress state so the recording indicator can't
+  // lie, plus a 1s tick to advance the elapsed timer.
+  const isLive = joined?.presentation.status === "live";
+  useEffect(() => {
+    if (!isHost || !isLive) return;
+    let active = true;
+    const poll = async () => {
+      try {
+        const r = await fetch(`/api/presentations/${presentationId}/egress`, { credentials: "include" });
+        if (active && r.ok) setEgress((await r.json()) as EgressState);
+      } catch {
+        /* ignore */
+      }
+    };
+    void poll();
+    const pollTimer = setInterval(() => void poll(), 5000);
+    const tick = setInterval(() => active && forceTick((n) => n + 1), 1000);
+    return () => {
+      active = false;
+      clearInterval(pollTimer);
+      clearInterval(tick);
+    };
+  }, [isHost, isLive, presentationId]);
 
   // ── Per-viewer translation of a base caption line ──────────────────────────
   const translate = useCallback(
@@ -89,6 +162,19 @@ export function PresentationRoom({
     },
     [translate],
   );
+
+  // Switching the caption language must take effect on the captions ALREADY on
+  // screen — not only the next spoken line. Clear stale translations (they were
+  // for the previous language), then re-translate the current lines.
+  useEffect(() => {
+    // Clear stale translations (they were for the previous language)…
+    setCaptions((cs) => cs.map((c) => ({ ...c, translated: undefined })));
+    // …then re-translate the lines currently on screen into the new language.
+    if (captionLang) {
+      for (const c of captions) if (captionLang !== c.lang) void translate(c.id, c.base, c.lang);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run only when the selected language changes
+  }, [captionLang]);
 
   // ── Join + LiveKit connect ─────────────────────────────────────────────────
   const join = useCallback(
@@ -355,10 +441,11 @@ export function PresentationRoom({
   if (phase === "error") return <main className="px-6 py-16 text-center text-sm text-red-500">Could not join: {error}</main>;
 
   const ended = joined?.presentation.status === "ended";
+  const recElapsed = isLive && egress?.startedat ? fmtElapsed(Date.now() - new Date(egress.startedat).getTime()) : "";
 
   return (
-    <main className="flex-1 px-6 py-6">
-      <div className="mx-auto grid max-w-6xl gap-4 lg:grid-cols-[1fr_320px]">
+    <main className="flex min-h-0 flex-1 flex-col px-6 py-6">
+      <div className="mx-auto grid w-full min-h-0 flex-1 max-w-6xl gap-4 lg:grid-cols-[1fr_320px] lg:grid-rows-1">
         {/* Stage */}
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-2">
@@ -370,7 +457,10 @@ export function PresentationRoom({
           </div>
 
           {ended ? (
-            <ReplayPlayer presentationId={presentationId} />
+            <>
+              <ReplayPlayer presentationId={presentationId} />
+              <ReplayChatSummary presentationId={presentationId} />
+            </>
           ) : (
             <div className="relative aspect-video overflow-hidden rounded-xl border border-border bg-black">
               <video ref={videoRef} className="h-full w-full object-contain" autoPlay playsInline />
@@ -413,11 +503,25 @@ export function PresentationRoom({
             <div className="flex flex-wrap items-center gap-2">
               {isHost ? (
                 <>
-                  {joined?.presentation.status === "live" ? (
-                    <span className={`${btn} border border-red-500/40 text-red-500`} title="This session is live and being recorded">
-                      <span className="mr-1.5 inline-block h-2 w-2 animate-pulse rounded-full bg-red-500" />
-                      Recording
-                    </span>
+                  {isLive ? (
+                    egress?.egressstatus === "active" ? (
+                      <span className={`${btn} border border-red-500/40 text-red-500`} title={`Recording to S3 · egress ${egress.egressid ?? "?"}`}>
+                        <span className="mr-1.5 inline-block h-2 w-2 animate-pulse rounded-full bg-red-500" />
+                        Recording{recElapsed ? ` · ${recElapsed}` : ""}
+                      </span>
+                    ) : egress?.egressstatus === "failed" ? (
+                      <span
+                        className={`${btn} border border-amber-500/50 text-amber-600`}
+                        title={`Egress not running: ${egress.egresserror ?? "unknown"}. The session is live but NOT being recorded.`}
+                      >
+                        ⚠ Live · not recording
+                      </span>
+                    ) : (
+                      <span className={`${btn} border border-border text-muted-foreground`} title="Checking recording status…">
+                        <span className="mr-1.5 inline-block h-2 w-2 animate-pulse rounded-full bg-muted-foreground" />
+                        Live · checking…
+                      </span>
+                    )
                   ) : (
                     <button onClick={() => void hostAction("start")} className={`${btn} bg-primary text-primary-foreground hover:opacity-90`}>
                       Go live
@@ -458,7 +562,7 @@ export function PresentationRoom({
         </div>
 
         {/* Side panel: host queue + chat */}
-        <aside className="flex h-[70vh] flex-col gap-3">
+        <aside className="flex h-[70vh] min-h-0 flex-col gap-3 lg:h-full">
           {isHost && (
             <div className="rounded-xl border border-border bg-card p-3">
               <h2 className="mb-1 text-xs font-bold">Questions ({queue.length})</h2>
@@ -479,14 +583,19 @@ export function PresentationRoom({
             </div>
           )}
 
-          <div className="flex min-h-0 flex-1 flex-col rounded-xl border border-border bg-card p-3">
+          <div
+            className="flex min-h-0 flex-1 flex-col rounded-xl border border-border p-3"
+            style={{ backgroundColor: "color-mix(in srgb, hsl(var(--card)), #fff 14%)" }}
+          >
             <h2 className="mb-1 text-xs font-bold">Chat</h2>
-            <div className="min-h-0 flex-1 space-y-1 overflow-y-auto text-sm">
-              {chat.map((m) => (
-                <div key={m.id}>
-                  <span className="font-semibold">{m.from}:</span> {m.text}
-                </div>
-              ))}
+            <div ref={chatScrollRef} className="min-h-0 flex-1 overflow-y-auto text-sm">
+              <div className="space-y-1" style={{ zoom }}>
+                {chat.map((m) => (
+                  <div key={m.id}>
+                    <span className="font-semibold">{m.from}:</span> {m.text}
+                  </div>
+                ))}
+              </div>
             </div>
             <div className="mt-2 flex gap-2">
               <input

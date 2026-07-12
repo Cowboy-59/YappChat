@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { WSProvider, useWSClient, useWSEvent } from "@/components/ws/WSProvider";
 import { scopes, type WSEvent } from "@/lib/ws/events";
@@ -8,7 +8,7 @@ import { EmojiPicker } from "./EmojiPicker";
 import { GifPicker } from "./GifPicker";
 
 type Attachment = { url: string; name: string; isImage: boolean };
-type Message = { id: string; authorid: string; authorname?: string | null; content: string | null; direction: string; conversationid?: string; createdat?: string; media?: Attachment[] };
+type Message = { id: string; authorid: string; authorname?: string | null; authoravatar?: string | null; content: string | null; direction: string; conversationid?: string; createdat?: string; media?: Attachment[]; deletedat?: string | null };
 type UserLite = { id: string; displayname: string; email: string };
 type Contact = UserLite & { conversationid: string | null };
 type Request = { contactid: string; conversationid: string | null; from: UserLite };
@@ -24,11 +24,63 @@ function label(u: UserLite): string {
   return u.displayname?.trim() || u.email.split("@")[0];
 }
 
-/** Format a UTC ISO timestamp in the reader's local timezone (e.g. "Jun 22, 2:45 PM"). */
-function localTime(iso: string): string {
+/** Just the clock time (e.g. "2:45 PM") for the in-bubble timestamp. */
+function clockTime(iso?: string): string {
+  if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+
+/** True when two ISO timestamps fall on the same local calendar day. */
+function sameLocalDay(a?: string, b?: string): boolean {
+  if (!a || !b) return false;
+  const x = new Date(a);
+  const y = new Date(b);
+  return x.getFullYear() === y.getFullYear() && x.getMonth() === y.getMonth() && x.getDate() === y.getDate();
+}
+
+/** "Today" / "Yesterday" / "Mon, Jul 2" for a date separator. */
+function dayLabel(iso?: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const diff = Math.round((today.getTime() - day.getTime()) / 86_400_000);
+  if (diff === 0) return "Today";
+  if (diff === 1) return "Yesterday";
+  return d.toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    ...(d.getFullYear() !== today.getFullYear() ? { year: "numeric" } : {}),
+  });
+}
+
+/** Small circular avatar for a message author (image or initial fallback). */
+function MsgAvatar({ url, name }: { url?: string | null; name: string }) {
+  if (url) {
+    // eslint-disable-next-line @next/next/no-img-element -- presigned S3 avatar URL, not a static asset
+    return <img src={url} alt="" className="h-7 w-7 shrink-0 rounded-full object-cover" />;
+  }
+  return (
+    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[11px] font-semibold uppercase text-foreground">
+      {name.slice(0, 1)}
+    </span>
+  );
+}
+
+/** A bold date separator line shown between message groups from different days. */
+function DateDivider({ iso }: { iso?: string }) {
+  return (
+    <div className="my-3 flex items-center gap-3 px-1">
+      <div className="h-px flex-1 bg-border" />
+      <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{dayLabel(iso)}</span>
+      <div className="h-px flex-1 bg-border" />
+    </div>
+  );
 }
 
 /**
@@ -50,6 +102,11 @@ function Inner() {
   const [chats, setChats] = useState<Chat[]>([]);
 
   const [messages, setMessages] = useState<Message[]>([]);
+  const [myRole, setMyRole] = useState<string | null>(null);
+  // Ctrl + mouse-wheel zoom level for the message area only (0.6–2.0).
+  const [zoom, setZoom] = useState(1);
+  // FR-015 — right-click delete menu: which message + where to anchor it.
+  const [msgMenu, setMsgMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const [input, setInput] = useState("");
   const convRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -129,11 +186,16 @@ function Inner() {
     if (convParam === convRef.current) return;
     convRef.current = convParam;
     setMessages([]);
+    setMyRole(null);
     ws.subscribe(scopes.conversation(convParam));
     let cancelled = false;
     void (async () => {
       const r = await fetch(`/api/engine/conversations/${convParam}/messages`, { credentials: "include" });
-      if (!cancelled && r.ok) setMessages(((await r.json()) as { messages: Message[] }).messages);
+      if (!cancelled && r.ok) {
+        const d = (await r.json()) as { messages: Message[]; myrole?: string | null };
+        setMessages(d.messages);
+        setMyRole(d.myrole ?? null);
+      }
       // Mark read, then nudge the sidebar so its unread badge clears now.
       void fetch(`/api/engine/conversations/${convParam}/read`, { method: "POST", credentials: "include" }).then(refreshNav);
     })();
@@ -155,6 +217,73 @@ function Inner() {
   }, []);
   useWSEvent("message.inbound", onMessage);
   useWSEvent("message.outbound", onMessage);
+
+  // FR-015 — delete-for-everyone: replace the message with its tombstone in place.
+  const onDeleted = useCallback((e: WSEvent) => {
+    const t = e.payload as Message & { conversationid: string };
+    if (t.conversationid !== convRef.current) return;
+    setMessages((prev) => prev.map((x) => (x.id === t.id ? { ...x, content: null, media: [], deletedat: t.deletedat ?? new Date().toISOString() } : x)));
+  }, []);
+  useWSEvent("message.deleted", onDeleted);
+
+  // FR-015 — issue the soft-delete. The WS `message.deleted` echo tombstones it
+  // for everyone (including us), so we only need the confirm + request here.
+  const deleteMessage = useCallback(async (id: string) => {
+    setMsgMenu(null);
+    if (!window.confirm("Delete this message for everyone? This can't be undone.")) return;
+    const r = await fetch(`/api/chats/messages/${id}`, { method: "DELETE", credentials: "include" });
+    if (r.ok) {
+      const { message } = (await r.json()) as { message: Message };
+      setMessages((prev) => prev.map((x) => (x.id === id ? { ...x, content: null, media: [], deletedat: message.deletedat ?? new Date().toISOString() } : x)));
+    }
+  }, []);
+
+  // Restore the saved zoom level once on mount.
+  useEffect(() => {
+    try {
+      const saved = parseFloat(localStorage.getItem("chatZoom") ?? "");
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot restore from localStorage
+      if (saved >= 0.6 && saved <= 2) setZoom(saved);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  // Ctrl + mouse-wheel zooms ONLY the message area, not the whole page. React's
+  // onWheel is passive so preventDefault wouldn't stop the browser page zoom —
+  // attach a native non-passive listener on the scroll container instead.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      setZoom((z) => {
+        const next = Math.min(2, Math.max(0.6, Math.round((z + (e.deltaY < 0 ? 0.1 : -0.1)) * 10) / 10));
+        try {
+          localStorage.setItem("chatZoom", String(next));
+        } catch {
+          /* ignore */
+        }
+        return next;
+      });
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [activeConv]);
+
+  // Dismiss the context menu on any outside click / Escape.
+  useEffect(() => {
+    if (!msgMenu) return;
+    const close = () => setMsgMenu(null);
+    const onKey = (ev: KeyboardEvent) => ev.key === "Escape" && setMsgMenu(null);
+    window.addEventListener("click", close);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [msgMenu]);
 
   // Keep the newest message in view as the thread grows.
   useEffect(() => {
@@ -278,7 +407,7 @@ function Inner() {
   const activeName = activeConv ? nameForConv(activeConv) : "";
 
   return (
-    <div className="flex min-h-[72vh] flex-col gap-3">
+    <div className="flex flex-1 min-h-0 flex-col gap-3">
       {inviteNotice && (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted px-4 py-2 text-sm text-foreground">
           <span>{inviteNotice}</span>
@@ -290,7 +419,8 @@ function Inner() {
 
       {/* The conversation fills the whole surface; the list lives in the sidebar. */}
       <section
-        className="relative flex flex-1 flex-col rounded-xl border border-border bg-card"
+        className="relative flex flex-1 flex-col rounded-xl border border-border"
+        style={{ backgroundColor: "color-mix(in srgb, hsl(var(--card)), #fff 14%)" }}
         onDragOver={(e) => {
           if (activeConv && canSend) {
             e.preventDefault();
@@ -319,66 +449,107 @@ function Inner() {
         ) : (
           <>
             <div className="border-b border-border px-4 py-3 text-sm font-semibold text-foreground">{activeName || "Chat"}</div>
-            <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-4">
-              {messages.map((m) => {
+            <div ref={scrollRef} className="flex-1 overflow-y-auto p-4">
+              <div className="space-y-3" style={{ zoom }}>
+              {messages.map((m, i) => {
+                const prev = messages[i - 1];
+                const showDate = !sameLocalDay(prev?.createdat, m.createdat);
+                const divider = showDate ? <DateDivider iso={m.createdat} /> : null;
+
                 if (m.authorid === SYSTEM_AUTHOR) {
                   return (
-                    <p key={m.id} className="text-center text-xs italic text-muted-foreground">
-                      {m.content}
-                    </p>
+                    <Fragment key={m.id}>
+                      {divider}
+                      <p className="text-center text-xs italic text-muted-foreground">{m.content}</p>
+                    </Fragment>
                   );
                 }
                 const mine = m.authorid === me;
+                const canDelete = !m.deletedat && (mine || myRole === "admin" || myRole === "owner");
                 return (
-                  <div key={m.id} className={mine ? "text-right" : "text-left"}>
-                    <div className={`mb-0.5 flex items-baseline gap-2 px-1 ${mine ? "justify-end" : "justify-start"}`}>
-                      <span className="text-xs font-semibold text-muted-foreground">
-                        {m.authorname ?? `${m.authorid.slice(0, 8)}…`}
-                      </span>
-                      <span className="text-[11px] text-muted-foreground/70" title={m.createdat ? new Date(m.createdat).toLocaleString() : ""}>
-                        {m.createdat ? localTime(m.createdat) : ""}
-                      </span>
-                    </div>
-                    {m.media && m.media.length > 0 && (
-                      <div className={`mb-1 flex flex-wrap gap-1.5 ${mine ? "justify-end" : "justify-start"}`}>
-                        {m.media.map((att) =>
-                          att.isImage ? (
-                            <a key={att.url} href={att.url} target="_blank" rel="noopener noreferrer" title={att.name}>
-                              {/* eslint-disable-next-line @next/next/no-img-element -- presigned S3 URL, not a static asset */}
-                              <img src={att.url} alt={att.name} className="max-h-60 max-w-[16rem] rounded-xl border border-border object-cover" />
-                            </a>
-                          ) : (
-                            <a
-                              key={att.url}
-                              href={att.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              download={att.name}
-                              className="flex max-w-[16rem] items-center gap-2 rounded-xl border border-border bg-background px-3 py-2 text-left hover:bg-muted"
-                              title={`Download ${att.name}`}
-                            >
-                              <span className="text-lg">📄</span>
-                              <span className="min-w-0">
-                                <span className="block truncate text-sm font-medium text-foreground">{att.name}</span>
-                                <span className="block text-[11px] text-muted-foreground">Download</span>
+                  <Fragment key={m.id}>
+                    {divider}
+                    <div
+                      className={`flex items-end gap-2 ${mine ? "justify-end" : "justify-start"}`}
+                      onContextMenu={(e) => {
+                        if (!canDelete) return; // fall through to the native menu when not deletable
+                        e.preventDefault();
+                        setMsgMenu({ id: m.id, x: e.clientX, y: e.clientY });
+                      }}
+                    >
+                      {!mine && <MsgAvatar url={m.authoravatar} name={m.authorname ?? m.authorid} />}
+                      <div className={`flex min-w-0 max-w-[78%] flex-col ${mine ? "items-end" : "items-start"}`}>
+                        {!mine && (
+                          <span className="mb-0.5 px-1 text-xs font-semibold text-muted-foreground">
+                            {m.authorname ?? `${m.authorid.slice(0, 8)}…`}
+                          </span>
+                        )}
+                        {m.deletedat ? (
+                          <span className="inline-block rounded-2xl px-3 py-1.5 text-sm italic text-muted-foreground">This message was deleted</span>
+                        ) : (
+                          <>
+                            {m.media && m.media.length > 0 && (
+                              <div className={`mb-1 flex flex-wrap gap-1.5 ${mine ? "justify-end" : "justify-start"}`}>
+                                {m.media.map((att) =>
+                                  att.isImage ? (
+                                    <a key={att.url} href={att.url} target="_blank" rel="noopener noreferrer" title={att.name}>
+                                      {/* eslint-disable-next-line @next/next/no-img-element -- presigned S3 URL, not a static asset */}
+                                      <img src={att.url} alt={att.name} className="max-h-60 max-w-[16rem] rounded-xl border border-border object-cover" />
+                                    </a>
+                                  ) : (
+                                    <a
+                                      key={att.url}
+                                      href={att.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      download={att.name}
+                                      className="flex max-w-[16rem] items-center gap-2 rounded-xl border border-border bg-background px-3 py-2 text-left hover:bg-muted"
+                                      title={`Download ${att.name}`}
+                                    >
+                                      <span className="text-lg">📄</span>
+                                      <span className="min-w-0">
+                                        <span className="block truncate text-sm font-medium text-foreground">{att.name}</span>
+                                        <span className="block text-[11px] text-muted-foreground">Download</span>
+                                      </span>
+                                    </a>
+                                  ),
+                                )}
+                              </div>
+                            )}
+                            {m.content && (
+                              <span
+                                className={`inline-block max-w-full whitespace-pre-wrap break-words rounded-2xl px-3 py-1.5 text-sm ${mine ? "bg-green-200 text-slate-950 dark:bg-green-800 dark:text-green-50" : "bg-[color-mix(in_srgb,var(--color-cyan-500),#fff_20%)] text-slate-950"}`}
+                              >
+                                {m.content}
+                                <span className="mt-0.5 block text-right text-[10px] opacity-60">{clockTime(m.createdat)}</span>
                               </span>
-                            </a>
-                          ),
+                            )}
+                          </>
                         )}
                       </div>
-                    )}
-                    {m.content && (
-                      <span
-                        className={`inline-block max-w-[75%] whitespace-pre-wrap break-words rounded-2xl px-3 py-1.5 text-sm ${mine ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"}`}
-                      >
-                        {m.content}
-                      </span>
-                    )}
-                  </div>
+                    </div>
+                  </Fragment>
                 );
               })}
               {messages.length === 0 && <p className="text-sm text-muted-foreground">No messages yet.</p>}
+              </div>
             </div>
+
+            {msgMenu && (
+              <div
+                className="fixed z-30 min-w-[10rem] overflow-hidden rounded-lg border border-border bg-card py-1 shadow-lg"
+                style={{ top: msgMenu.y, left: msgMenu.x }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  onClick={() => deleteMessage(msgMenu.id)}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-red-500 hover:bg-muted"
+                >
+                  🗑 Delete message
+                </button>
+              </div>
+            )}
 
             {pendingIncoming ? (
               <div className="flex items-center justify-between gap-2 border-t border-border bg-muted/40 p-3">

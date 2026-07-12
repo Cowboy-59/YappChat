@@ -51,7 +51,8 @@ export function SchedulePresentationForm() {
     }
   }
 
-  async function submit() {
+  /** Shared create; returns the new presentation id, or null on failure. */
+  async function postCreate(scheduledstartISO: string): Promise<string | null> {
     setBusy(true);
     setNote(null);
     const r = await fetch("/api/presentations", {
@@ -64,12 +65,19 @@ export function SchedulePresentationForm() {
         visibility,
         spokenlanguage,
         coverimageurl,
-        // Combine the calendar date + time as a LOCAL datetime, then normalize to UTC.
-        scheduledstart: new Date(`${date}T${time}`).toISOString(),
+        scheduledstart: scheduledstartISO,
       }),
     });
     setBusy(false);
-    if (r.ok) {
+    if (!r.ok) return null;
+    const data = (await r.json()) as { presentation: { id: string } };
+    return data.presentation.id;
+  }
+
+  async function submit() {
+    // Combine the calendar date + time as a LOCAL datetime, then normalize to UTC.
+    const id = await postCreate(new Date(`${date}T${time}`).toISOString());
+    if (id) {
       setOpen(false);
       setTitle("");
       setDescription("");
@@ -80,6 +88,27 @@ export function SchedulePresentationForm() {
     } else {
       setNote("Could not schedule — check the title and start time.");
     }
+  }
+
+  /** FR-026 — start an impromptu presentation immediately: create it dated from the
+   *  (now-seeded, calendar-editable) start fields and drop the host into the room. */
+  async function startNow() {
+    if (!title.trim() || !date || !time) {
+      setNote("Add a title and start time.");
+      return;
+    }
+    const id = await postCreate(new Date(`${date}T${time}`).toISOString());
+    if (id) router.push(`/presentations/${id}`);
+    else setNote("Could not start — try again.");
+  }
+
+  /** Open the form for "Start now": seed the start date + time to right now (the
+   *  host can still change the date via the calendar picker). */
+  function openStartNow() {
+    const d = new Date();
+    setDate(localDate(d));
+    setTime(localTime(d));
+    setOpen(true);
   }
 
   /** Open the form, seeding the calendar to the next round half-hour ~1h out. */
@@ -97,12 +126,20 @@ export function SchedulePresentationForm() {
 
   if (!open) {
     return (
-      <button
-        onClick={openForm}
-        className="inline-flex min-h-[36px] items-center rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:opacity-90"
-      >
-        + Schedule a presentation
-      </button>
+      <div className="flex flex-wrap gap-2">
+        <button
+          onClick={openStartNow}
+          className="inline-flex min-h-[36px] items-center rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:opacity-90"
+        >
+          ▶ Start now
+        </button>
+        <button
+          onClick={openForm}
+          className="inline-flex min-h-[36px] items-center rounded-lg border border-border px-4 text-sm font-semibold hover:bg-muted"
+        >
+          + Schedule a presentation
+        </button>
+      </div>
     );
   }
 
@@ -186,11 +223,19 @@ export function SchedulePresentationForm() {
           }}
         />
       </div>
-      <div className="flex gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          onClick={startNow}
+          disabled={busy || !title.trim() || !date || !time}
+          title="Create and go straight into the room now"
+          className="inline-flex min-h-[36px] items-center rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+        >
+          {busy ? "Starting…" : "▶ Start now"}
+        </button>
         <button
           onClick={submit}
           disabled={busy || !title.trim() || !date || !time}
-          className="inline-flex min-h-[36px] items-center rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+          className="inline-flex min-h-[36px] items-center rounded-lg border border-border px-4 text-sm font-semibold hover:bg-muted disabled:opacity-50"
         >
           {busy ? "Saving…" : "Schedule"}
         </button>
@@ -200,6 +245,7 @@ export function SchedulePresentationForm() {
         >
           Cancel
         </button>
+        <span className="text-xs text-muted-foreground">Date &amp; time apply to “Schedule”; “Start now” needs only a title.</span>
       </div>
     </div>
   );

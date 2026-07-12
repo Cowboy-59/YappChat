@@ -121,6 +121,11 @@ export const messages = ycSchema.table(
     ackstate: ackStateEnum("ackstate").notNull().default("pending"),
     ackedat: timestamp("ackedat", { withTimezone: true }),
     purgeat: timestamp("purgeat", { withTimezone: true }),
+    // FR-015 — user-initiated soft-delete ("unsend for everyone"). NULL = live;
+    // when set, content/encryptedpayload/mediaurl are cleared and the row renders
+    // as a "This message was deleted" tombstone. `deletedby` is the actor userid.
+    deletedat: timestamp("deletedat", { withTimezone: true }),
+    deletedby: uuid("deletedby"),
     createdat: timestamp("createdat", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -147,6 +152,26 @@ export const messagedeliveries = ycSchema.table(
     createdat: timestamp("createdat", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("messagedeliveries_messageid_idx").on(t.messageid)],
+);
+
+/**
+ * Spec 001 FR-012/FR-015 — immutable audit trail for message lifecycle events
+ * (deletion, retention purge). Written on every user-initiated delete (FR-015)
+ * and by the retention purge job (FR-012). Retained 90 days, NOT subject to a
+ * user's retention policy. `actorid` is the userid who took the action (NULL for
+ * automated purge). Deliberately append-only: no update/delete in app code.
+ */
+export const messageauditlog = ycSchema.table(
+  "messageauditlog",
+  {
+    id: uuid("id").primaryKey(),
+    messageid: uuid("messageid").notNull(),
+    conversationid: uuid("conversationid"),
+    actorid: uuid("actorid"),
+    action: text("action").notNull(), // 'user-delete' | 'purge'
+    createdat: timestamp("createdat", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("messageauditlog_messageid_idx").on(t.messageid)],
 );
 
 /**
@@ -179,4 +204,5 @@ export const conversationmembers = ycSchema.table(
 export type ChannelRow = typeof channels.$inferSelect;
 export type ConversationRow = typeof conversations.$inferSelect;
 export type MessageRow = typeof messages.$inferSelect;
+export type MessageAuditLogRow = typeof messageauditlog.$inferSelect;
 export type ConversationMemberRow = typeof conversationmembers.$inferSelect;

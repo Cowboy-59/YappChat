@@ -16,6 +16,8 @@ export type NormalizedMessage = {
   authorid: string;
   /** Account display name (spec 011), or the email local-part fallback; null if the author isn't a known user. */
   authorname: string | null;
+  /** Resolved (presigned) avatar URL for the author; null if none or not a known user. */
+  authoravatar: string | null;
   /** Attachments (presigned URL + filename + isImage), stored privately on S3 as keys. */
   media: Attachment[];
   content: string | null;
@@ -23,6 +25,10 @@ export type NormalizedMessage = {
   direction: "inbound" | "outbound";
   ackstate: "pending" | "acked" | "nacked";
   createdat: string;
+  /** FR-015 — soft-delete tombstone timestamp; null when the message is live. */
+  deletedat: string | null;
+  /** FR-015 — userid of whoever deleted it (author or admin); null when live. */
+  deletedby: string | null;
 };
 
 /** Returned by a plugin's send(): the platform's own message id(s). */

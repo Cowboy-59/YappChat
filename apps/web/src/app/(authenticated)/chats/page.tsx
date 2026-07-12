@@ -9,7 +9,7 @@ export default async function ChatsPage() {
   const user = await getSessionUser();
   if (!user) redirect("/signin?return=/chats");
   return (
-    <main className="flex flex-1 flex-col px-4 py-4">
+    <main className="flex flex-1 flex-col px-4 py-4 min-h-0">
       <ChatsApp />
     </main>
   );

@@ -18,6 +18,9 @@ function AuthSignoutListener({ currentSessionId }: { currentSessionId: string | 
     // No sessionid → treat as broad sign-out; otherwise only the targeted device.
     if (!sid || sid === currentSessionId) window.location.assign("/?signedout=forced");
   });
+  // Spec 018 FR-025 — an invite/request you sent was accepted: refresh the contacts
+  // + chats sidebar so the new contact appears live (ChatsNav listens for this).
+  useWSEvent(WSEventType.ContactAccepted, () => window.dispatchEvent(new CustomEvent("nav:refresh")));
   return null;
 }
 

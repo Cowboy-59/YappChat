@@ -6,9 +6,10 @@ import { AvailabilityControl } from "@/components/dashboard/AvailabilityControl"
 import { DeviceSessionsList } from "@/components/auth/DeviceSessionsList";
 import { LinkedIdentitiesPanel } from "@/components/auth/LinkedIdentitiesPanel";
 import { SystemRoleManager } from "@/components/auth/SystemRoleManager";
+import { DashboardSpaceInvite } from "@/components/dashboard/DashboardSpaceInvite";
 import { getActiveOrg, getSessionUser } from "@/lib/auth/session";
 import { isSystemStaff } from "@/lib/auth/shared";
-import { listMyCommunities } from "@/lib/communities/service";
+import { listMyCommunities, listMyInviteTargets } from "@/lib/communities/service";
 import { resolveAvatarUrl } from "@/lib/account/avatar-resolve";
 
 export const dynamic = "force-dynamic";
@@ -29,12 +30,16 @@ const QUICK_LINKS = [
 export default async function DashboardHome() {
   const user = await getSessionUser();
   if (!user) redirect("/signin?return=/app");
-  const [org, myCommunities, avatarSrc] = await Promise.all([
+  const [org, myCommunities, inviteTargets, avatarSrc] = await Promise.all([
     getActiveOrg(user.id),
     listMyCommunities(user.id),
+    listMyInviteTargets(user.id),
     resolveAvatarUrl(user.avatarurl),
   ]);
   const staff = isSystemStaff(user);
+  // Spec 068 delta — surface the existing spec 011 company invite on the dashboard
+  // for corporate owner/admins (routes to /members, the canonical invite surface).
+  const canInviteColleagues = org?.plantype === "corporate" && (org.role === "owner" || org.role === "admin");
 
   return (
     <main className="flex-1 px-6 py-8">
@@ -57,6 +62,12 @@ export default async function DashboardHome() {
                 <div className="mt-0.5 text-xs text-muted-foreground">{l.desc}</div>
               </Link>
             ))}
+            {canInviteColleagues && (
+              <Link href="/members" className="rounded-xl border border-border bg-card p-4 hover:bg-muted">
+                <div className="text-sm font-semibold">Invite a colleague</div>
+                <div className="mt-0.5 text-xs text-muted-foreground">Add someone to {org?.name}</div>
+              </Link>
+            )}
             {staff && (
               <Link href="/admin" className="rounded-xl border border-border bg-card p-4 hover:bg-muted">
                 <div className="text-sm font-semibold">Admin</div>
@@ -65,6 +76,10 @@ export default async function DashboardHome() {
             )}
           </div>
         </section>
+
+        {/* Spec 068 delta / 017 FR-021 — invite users into a community space (Public/
+            Support), shown when the user owns/moderates a community. */}
+        {inviteTargets.length > 0 && <DashboardSpaceInvite targets={inviteTargets} />}
 
         {/* Profile (aligned to the end of Studio: first 2 of 4 cols) + Discover (right) */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
