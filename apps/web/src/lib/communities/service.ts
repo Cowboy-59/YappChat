@@ -136,6 +136,39 @@ export async function listMyCommunities(
   }));
 }
 
+/**
+ * Spec 013/017 — communities the user may mint invites for (owner/moderator, i.e.
+ * holds `invite:create`), each with its spaces + FR-021 reusable eligibility. Backs
+ * the dashboard "Invite to a space" control. Community-wide invite = `spaceid` null.
+ */
+export async function listMyInviteTargets(
+  userid: string,
+): Promise<Array<{ id: string; name: string; spaces: Array<{ id: string; name: string; reusable: boolean }> }>> {
+  const db = getDb();
+  if (!db) return [];
+  const owned = await db
+    .select({ id: communities.id, name: communities.name, role: communitymembers.role })
+    .from(communitymembers)
+    .innerJoin(communities, eq(communitymembers.communityid, communities.id))
+    .where(and(eq(communitymembers.userid, userid), inArray(communitymembers.role, ["owner", "moderator"])))
+    .orderBy(desc(communities.createdat));
+  if (owned.length === 0) return [];
+
+  const ids = owned.map((c) => c.id);
+  const sp = await db
+    .select({ id: spaces.id, name: spaces.name, communityid: spaces.communityid, adminonly: spaces.adminonly, corponly: spaces.corponly })
+    .from(spaces)
+    .where(inArray(spaces.communityid, ids));
+
+  return owned.map((c) => ({
+    id: c.id,
+    name: c.name,
+    spaces: sp
+      .filter((s) => s.communityid === c.id)
+      .map((s) => ({ id: s.id, name: s.name, reusable: !s.adminonly && !s.corponly })),
+  }));
+}
+
 /** Spec 068 — set the caller's own per-community availability (status + note). */
 export async function setAvailability(
   communityid: string,
