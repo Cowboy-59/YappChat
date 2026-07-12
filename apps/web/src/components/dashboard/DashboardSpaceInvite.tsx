@@ -71,6 +71,7 @@ export function DashboardSpaceInvite({ targets }: { targets: InviteTargetCommuni
 
       <div className="flex flex-wrap items-center gap-2">
         <select
+          aria-label="Community"
           className={`${field} w-auto`}
           value={communityid}
           onChange={(e) => {
@@ -87,6 +88,7 @@ export function DashboardSpaceInvite({ targets }: { targets: InviteTargetCommuni
         </select>
 
         <select
+          aria-label="Space"
           className={`${field} w-auto`}
           value={spaceid}
           onChange={(e) => {
@@ -104,7 +106,7 @@ export function DashboardSpaceInvite({ targets }: { targets: InviteTargetCommuni
         </select>
 
         {reusable && (
-          <select className={`${field} w-auto`} value={uses} onChange={(e) => setUses(Number(e.target.value))}>
+          <select aria-label="Number of uses" className={`${field} w-auto`} value={uses} onChange={(e) => setUses(Number(e.target.value))}>
             {USES.map((u, i) => (
               <option key={u.label} value={i}>
                 {u.label}
@@ -120,7 +122,7 @@ export function DashboardSpaceInvite({ targets }: { targets: InviteTargetCommuni
 
       {link && (
         <div className="flex items-center gap-2">
-          <input readOnly className={field} value={link} onFocus={(e) => e.currentTarget.select()} />
+          <input aria-label="Invite link" readOnly className={field} value={link} onFocus={(e) => e.currentTarget.select()} />
           <button
             type="button"
             className={ghost}

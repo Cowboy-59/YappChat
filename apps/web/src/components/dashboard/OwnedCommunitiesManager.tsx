@@ -519,7 +519,7 @@ function SpaceInviteButton({
     <div className="space-y-1">
       <div className="flex items-center gap-2">
         {reusable && (
-          <select className={`${field} w-auto`} value={choice} onChange={(e) => setChoice(Number(e.target.value))}>
+          <select aria-label="Number of uses" className={`${field} w-auto`} value={choice} onChange={(e) => setChoice(Number(e.target.value))}>
             {USES_CHOICES.map((c, i) => (
               <option key={c.label} value={i}>
                 {c.label}
@@ -533,7 +533,7 @@ function SpaceInviteButton({
       </div>
       {link && (
         <div className="space-y-1 rounded-lg border border-border p-2">
-          <input readOnly className={field} value={link.url} onFocus={(e) => e.currentTarget.select()} />
+          <input aria-label="Invite link" readOnly className={field} value={link.url} onFocus={(e) => e.currentTarget.select()} />
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span>
               {reusable ? USES_CHOICES[choice].label : "Single-use"} · expires {new Date(link.expiresat).toLocaleString()}
@@ -555,7 +555,14 @@ function SpaceInviteButton({
               <span className="flex-1 truncate">
                 {usesLabel(i)} · expires {new Date(i.expiresat).toLocaleDateString()}
               </span>
-              <button type="button" onClick={() => void revoke(i.id)} className="font-semibold text-destructive hover:underline">
+              <button
+                type="button"
+                aria-label="Revoke invite link"
+                onClick={() => {
+                  if (window.confirm("Revoke this invite link? It stops working immediately.")) void revoke(i.id);
+                }}
+                className="rounded font-semibold text-destructive hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive"
+              >
                 Revoke
               </button>
             </li>
