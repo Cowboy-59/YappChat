@@ -3,6 +3,7 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { WSProvider, useWSClient, useWSEvent } from "@/components/ws/WSProvider";
+import { MessageText } from "@/components/chat/MessageText";
 import { scopes, type WSEvent } from "@/lib/ws/events";
 import { EmojiPicker } from "./EmojiPicker";
 import { GifPicker } from "./GifPicker";
@@ -89,7 +90,7 @@ function DateDivider({ iso }: { iso?: string }) {
  * opens a conversation; `?new=1` opens the add-person modal. It still fetches
  * contacts/chats to resolve the active conversation's title + send-gating.
  */
-function Inner() {
+function Inner({ autoTranslate }: { autoTranslate: boolean }) {
   const ws = useWSClient();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -520,7 +521,11 @@ function Inner() {
                               <span
                                 className={`inline-block max-w-full whitespace-pre-wrap break-words rounded-2xl px-3 py-1.5 text-sm ${mine ? "bg-green-200 text-slate-950 dark:bg-green-800 dark:text-green-50" : "bg-[color-mix(in_srgb,var(--color-cyan-500),#fff_20%)] text-slate-950"}`}
                               >
-                                {m.content}
+                                <MessageText
+                                  messageId={m.id}
+                                  content={m.content}
+                                  translate={autoTranslate && !mine}
+                                />
                                 <span className="mt-0.5 block text-right text-[10px] opacity-60">{clockTime(m.createdat)}</span>
                               </span>
                             )}
@@ -840,10 +845,10 @@ function NewChatModal({
   );
 }
 
-export function ChatsApp() {
+export function ChatsApp({ autoTranslate }: { autoTranslate: boolean }) {
   return (
     <WSProvider>
-      <Inner />
+      <Inner autoTranslate={autoTranslate} />
     </WSProvider>
   );
 }

@@ -6,6 +6,7 @@ import { WSProvider, useWSClient, useWSEvent } from "@/components/ws/WSProvider"
 import { SpaceCreateForm, type SpaceCreatePayload } from "@/components/communities/SpaceCreateForm";
 import { SpaceAiPanel } from "@/components/communities/SpaceAiPanel";
 import { SpacesManager } from "@/components/dashboard/OwnedCommunitiesManager";
+import { MessageText } from "@/components/chat/MessageText";
 import { scopes, type WSEvent } from "@/lib/ws/events";
 
 type Role = "owner" | "moderator" | "member";
@@ -538,7 +539,7 @@ function DiscoverPanel({ onJoined, onCreate }: { onJoined: () => void; onCreate:
   );
 }
 
-function Inner({ currentUserId }: { currentUserId: string }) {
+function Inner({ currentUserId, autoTranslate }: { currentUserId: string; autoTranslate: boolean }) {
   const ws = useWSClient();
   const [communities, setCommunities] = useState<Community[]>([]);
   const [community, setCommunity] = useState<Community | null>(null);
@@ -990,7 +991,12 @@ function Inner({ currentUserId }: { currentUserId: string }) {
                           <span
                             className={`inline-block max-w-full whitespace-pre-wrap break-words rounded-2xl px-3 py-1.5 text-sm ${mine ? "bg-green-200 text-slate-950 dark:bg-green-800 dark:text-green-50" : isBot ? "bg-muted text-foreground" : "bg-[color-mix(in_srgb,var(--color-cyan-500),#fff_20%)] text-slate-950"}`}
                           >
-                            {linkify(m.content)}
+                            <MessageText
+                              messageId={m.id}
+                              content={m.content}
+                              translate={autoTranslate && !mine}
+                              render={linkify}
+                            />
                             <span className="mt-0.5 block text-right text-[10px] opacity-60">{clockTime(m.createdat)}</span>
                           </span>
                         )}
@@ -1087,10 +1093,10 @@ function Inner({ currentUserId }: { currentUserId: string }) {
   );
 }
 
-export function CommunitiesApp({ currentUserId }: { currentUserId: string }) {
+export function CommunitiesApp({ currentUserId, autoTranslate }: { currentUserId: string; autoTranslate: boolean }) {
   return (
     <WSProvider>
-      <Inner currentUserId={currentUserId} />
+      <Inner currentUserId={currentUserId} autoTranslate={autoTranslate} />
     </WSProvider>
   );
 }

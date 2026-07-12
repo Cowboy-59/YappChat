@@ -14,7 +14,7 @@ export default async function CommunitiesPage() {
   if (!user) redirect("/signin?return=/communities");
   return (
     <main className="flex flex-1 flex-col px-4 py-4">
-      <CommunitiesApp currentUserId={user.id} />
+      <CommunitiesApp currentUserId={user.id} autoTranslate={user.autotranslate} />
     </main>
   );
 }
