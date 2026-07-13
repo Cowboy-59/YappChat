@@ -555,9 +555,17 @@ function Inner({ currentUserId, autoTranslate }: { currentUserId: string; autoTr
   const [pending, setPending] = useState<{ file: File; url: string }[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const convRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Whether the message list is scrolled to (near) the bottom. Drives
+  // bottom-anchored auto-scroll: only follow new messages when already at the
+  // bottom, so scrolling up to read history isn't interrupted.
+  const atBottomRef = useRef(true);
+  const onListScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (el) atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }, []);
   // Ctrl + mouse-wheel zoom level for the message area only (0.6–2.0).
   const [zoom, setZoom] = useState(1);
   useEffect(() => {
@@ -598,11 +606,29 @@ function Inner({ currentUserId, autoTranslate }: { currentUserId: string; autoTr
     return () => el.removeEventListener("wheel", onWheel);
   }, [space]);
 
-  // Keep the newest message in view (and start at the bottom when a space opens).
+  // Bottom-anchored auto-scroll: follow new messages only when the viewer is
+  // already at the bottom (otherwise leave them where they scrolled).
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el && atBottomRef.current) el.scrollTop = el.scrollHeight;
+  }, [messages]);
+
+  // Opening a space always jumps to the bottom (newest), regardless of prior scroll.
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages]);
+    atBottomRef.current = true;
+  }, [space?.id]);
+
+  // Auto-grow the composer textarea to fit its content (word-wraps, caps at
+  // ~6 lines then scrolls). Runs on every content change — typing, emoji
+  // insert, and the reset-to-empty after send.
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [input, space]);
 
   const loadCommunities = useCallback(async () => {
     const r = await fetch("/api/communities", { credentials: "include" });
@@ -799,6 +825,7 @@ function Inner({ currentUserId, autoTranslate }: { currentUserId: string; autoTr
 
     setInput("");
     setShowEmoji(false);
+    atBottomRef.current = true; // sending my own message always jumps to newest
     pending.forEach((p) => URL.revokeObjectURL(p.url));
     setPending([]);
     await fetch(`/api/engine/conversations/${space.conversationid}/messages`, {
@@ -816,9 +843,9 @@ function Inner({ currentUserId, autoTranslate }: { currentUserId: string; autoTr
   }
 
   return (
-    <div className="flex min-h-[70vh] flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
       {/* Toolbar — the sidebar accordion owns the community/space tree. */}
-      <div className="mb-3 flex items-center justify-between gap-2">
+      <div className="mb-3 flex shrink-0 items-center justify-between gap-2">
         <div className="min-w-0 truncate text-sm">
           <span className="font-semibold text-foreground">{community ? community.name : "Communities"}</span>
           {space && <span className="text-muted-foreground"> · </span>}
@@ -854,7 +881,7 @@ function Inner({ currentUserId, autoTranslate }: { currentUserId: string; autoTr
       </div>
 
       <section
-        className="flex flex-1 flex-col rounded-xl border border-border"
+        className="flex min-h-0 flex-1 flex-col rounded-xl border border-border"
         style={{ backgroundColor: "color-mix(in srgb, hsl(var(--card)), #fff 14%)" }}
       >
         {creating ? (
@@ -916,7 +943,8 @@ function Inner({ currentUserId, autoTranslate }: { currentUserId: string; autoTr
             )}
             <div
               ref={scrollRef}
-              className={`relative flex-1 overflow-y-auto p-4 ${dragOver ? "ring-2 ring-inset ring-primary" : ""}`}
+              onScroll={onListScroll}
+              className={`relative min-h-0 flex-1 overflow-y-auto p-4 ${dragOver ? "ring-2 ring-inset ring-primary" : ""}`}
               onDragOver={(e) => {
                 e.preventDefault();
                 setDragOver(true);
@@ -939,7 +967,7 @@ function Inner({ currentUserId, autoTranslate }: { currentUserId: string; autoTr
                 const divider = !sameLocalDay(prev?.createdat, m.createdat) ? <DateDivider iso={m.createdat} /> : null;
                 const mine = m.authorid === currentUserId;
                 const isBot = m.authorid === AI_ASSISTANT_AUTHOR_ID;
-                const label = isBot ? "🤖 Assistant" : (m.authorname ?? `${m.authorid.slice(0, 8)}…`);
+                const label = isBot ? "🖖 SPOCK AI" : (m.authorname ?? `${m.authorid.slice(0, 8)}…`);
                 return (
                   <Fragment key={m.id}>
                     {divider}
@@ -1008,7 +1036,7 @@ function Inner({ currentUserId, autoTranslate }: { currentUserId: string; autoTr
               {messages.length === 0 && <p className="text-sm text-muted-foreground">No messages yet.</p>}
               </div>
             </div>
-            <div className="relative border-t border-border p-3">
+            <div className="relative shrink-0 border-t border-border p-3">
               {showEmoji && <EmojiPicker onPick={insertEmoji} />}
               {pending.length > 0 && (
                 <div className="mb-2 flex flex-wrap gap-2">
@@ -1038,7 +1066,7 @@ function Inner({ currentUserId, autoTranslate }: { currentUserId: string; autoTr
                   ))}
                 </div>
               )}
-              <div className="flex items-center gap-2">
+              <div className="flex items-end gap-2">
                 <button
                   type="button"
                   onClick={() => setShowEmoji((v) => !v)}
@@ -1059,10 +1087,11 @@ function Inner({ currentUserId, autoTranslate }: { currentUserId: string; autoTr
                     }}
                   />
                 </label>
-                <input
+                <textarea
                   ref={inputRef}
-                  className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm"
-                  placeholder={uploading ? "Uploading…" : `Message #${space.name}…`}
+                  rows={1}
+                  className="max-h-40 flex-1 resize-none overflow-y-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-background px-3 py-2 text-sm leading-relaxed"
+                  placeholder={uploading ? "Uploading…" : `Message #${space.name}… (Enter to send, Ctrl+Enter for a new line)`}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onPaste={(e) => {
@@ -1073,7 +1102,8 @@ function Inner({ currentUserId, autoTranslate }: { currentUserId: string; autoTr
                     }
                   }}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") {
+                    // Enter sends; Ctrl+Enter / Shift+Enter insert a newline.
+                    if (e.key === "Enter" && !e.ctrlKey && !e.shiftKey && !e.metaKey) {
                       e.preventDefault();
                       void send();
                     } else if (e.key === "Escape") {
@@ -1081,7 +1111,7 @@ function Inner({ currentUserId, autoTranslate }: { currentUserId: string; autoTr
                     }
                   }}
                 />
-                <button onClick={send} className={primary} disabled={uploading}>
+                <button onClick={send} className={`${primary} self-end`} disabled={uploading}>
                   Send
                 </button>
               </div>

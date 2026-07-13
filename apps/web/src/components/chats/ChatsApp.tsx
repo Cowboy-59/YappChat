@@ -111,6 +111,13 @@ function Inner({ autoTranslate }: { autoTranslate: boolean }) {
   const [input, setInput] = useState("");
   const convRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Bottom-anchored auto-scroll: only follow new messages when already near the
+  // bottom, so scrolling up to read history isn't interrupted.
+  const atBottomRef = useRef(true);
+  const onListScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (el) atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }, []);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [inviteNotice, setInviteNotice] = useState("");
@@ -187,6 +194,7 @@ function Inner({ autoTranslate }: { autoTranslate: boolean }) {
     if (convParam === convRef.current) return;
     convRef.current = convParam;
     setMessages([]);
+    atBottomRef.current = true; // opening a conversation jumps to newest
     setMyRole(null);
     ws.subscribe(scopes.conversation(convParam));
     let cancelled = false;
@@ -286,10 +294,11 @@ function Inner({ autoTranslate }: { autoTranslate: boolean }) {
     };
   }, [msgMenu]);
 
-  // Keep the newest message in view as the thread grows.
+  // Bottom-anchored auto-scroll: follow new messages only when the viewer is
+  // already at the bottom (otherwise leave them where they scrolled).
   useEffect(() => {
     const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (el && atBottomRef.current) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
   function insertEmoji(e: string) {
@@ -349,6 +358,7 @@ function Inner({ autoTranslate }: { autoTranslate: boolean }) {
 
     setInput("");
     setShowEmoji(false);
+    atBottomRef.current = true; // sending my own message always jumps to newest
     pending.forEach((p) => URL.revokeObjectURL(p.url));
     setPending([]);
     await fetch(`/api/engine/conversations/${activeConv}/messages`, {
@@ -364,6 +374,7 @@ function Inner({ autoTranslate }: { autoTranslate: boolean }) {
   async function sendGif(url: string) {
     if (!activeConv || !canSend) return;
     setShowGif(false);
+    atBottomRef.current = true; // sending my own message always jumps to newest
     try {
       const r = await fetch("/api/gifs/pick", {
         method: "POST",
@@ -450,7 +461,7 @@ function Inner({ autoTranslate }: { autoTranslate: boolean }) {
         ) : (
           <>
             <div className="border-b border-border px-4 py-3 text-sm font-semibold text-foreground">{activeName || "Chat"}</div>
-            <div ref={scrollRef} className="flex-1 overflow-y-auto p-4">
+            <div ref={scrollRef} onScroll={onListScroll} className="min-h-0 flex-1 overflow-y-auto p-4">
               <div className="space-y-3" style={{ zoom }}>
               {messages.map((m, i) => {
                 const prev = messages[i - 1];

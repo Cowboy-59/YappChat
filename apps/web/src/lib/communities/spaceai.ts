@@ -22,7 +22,9 @@ import { EngineError } from "../engine/errors";
 
 /** Stable author id for bot-posted messages (text column; never a users.id). */
 export const AI_ASSISTANT_AUTHOR_ID = "yappchat-ai-assistant";
-export const AI_ASSISTANT_LABEL = "Assistant";
+// FR-019 rebrand (2026-07-13) — the assistant is "SPOCK AI". The author id is
+// left unchanged (stable key); only the display label moves.
+export const AI_ASSISTANT_LABEL = "SPOCK AI";
 
 const DEFAULT_MODEL = "claude-opus-4-8";
 

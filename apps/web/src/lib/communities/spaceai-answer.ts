@@ -1,7 +1,7 @@
-import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNotNull, ne, sql } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { aiproviders, type AiProviderRow } from "../db/pa-schema";
-import { communitymembers, spaceaichunks, spaceaisources, spaces } from "../db/communities-schema";
+import { spaceaichunks, spaceaisources, spaces } from "../db/communities-schema";
 import { messages } from "../db/engine-schema";
 import { getAdapter } from "../pa/adapters";
 import { postSystemMessage } from "../engine/service";
@@ -9,15 +9,16 @@ import { AI_ASSISTANT_AUTHOR_ID, AI_ASSISTANT_LABEL, getSpaceAiConfig } from "./
 import { embedQuery, embeddingsConfigured, toVectorLiteral } from "./embeddings";
 
 /**
- * Spec 017 FR-019 — per-space support AI retrieval + auto-answer.
+ * Spec 017 FR-019 — per-space support AI ("SPOCK AI") retrieval + summon.
  *
- * Retrieval is pgvector semantic search over the space's chunk embeddings
- * (Gemini text-embedding-004, cosine distance via the hnsw index), HARD-SCOPED to
- * a single space's chunks — with a Postgres full-text fallback when embeddings
- * aren't configured. If enabled, the space's own message history is folded in
- * (full-text). The model answers ONLY from the retrieved sources, in the asker's
- * language, and cites them; when nothing relevant is found it declines and
- * surfaces an available human (FR-007).
+ * SPOCK AI answers only when a member names it (see `mentionsSpock`). Retrieval
+ * is pgvector semantic search over the space's chunk embeddings (Gemini
+ * text-embedding-004, cosine distance via the hnsw index), HARD-SCOPED to a
+ * single space's chunks — with a Postgres full-text fallback when embeddings
+ * aren't configured — and ALWAYS folds in the space's own prior messages
+ * (full-text; 2026-07-13 amendment). The model answers ONLY from the retrieved
+ * sources, in the asker's language, and cites them; when nothing relevant is
+ * found it declines and reports to the support team (no member is named).
  */
 
 const MAX_CHUNKS = 6;
@@ -27,6 +28,10 @@ const MAX_HISTORY = 4;
 // clearly-unrelated chunks; the model's NOANSWER path is the final guard.
 const VECTOR_MAX_DIST = 0.8;
 const NO_ANSWER = "NOANSWER";
+// FR-019 (2026-07-13) — the no-answer path reports to the support team and no
+// longer names individual members.
+const DECLINE_TEXT =
+  "I couldn't find this in the docs — I will report this to our support team and someone will help you.";
 
 export type RetrievedSource = { content: string; citation: string };
 
@@ -93,27 +98,27 @@ async function retrieve(spaceid: string, query: string): Promise<RetrievedSource
     for (const r of rows) out.push({ content: r.content, citation: cite(r) });
   }
 
-  // Optionally fold in the space's own history.
-  const config = await getSpaceAiConfig(spaceid);
-  if (config?.includehistory) {
-    const [space] = await db.select({ conversationid: spaces.conversationid }).from(spaces).where(eq(spaces.id, spaceid)).limit(1);
-    if (space) {
-      const histRank = sql<number>`ts_rank(to_tsvector('english', coalesce(${messages.content}, '')), ${tsq})`;
-      const hist = await db
-        .select({ content: messages.content, createdat: messages.createdat, rank: histRank })
-        .from(messages)
-        .where(
-          and(
-            eq(messages.conversationid, space.conversationid),
-            isNotNull(messages.content),
-            sql`to_tsvector('english', coalesce(${messages.content}, '')) @@ ${tsq}`,
-          ),
-        )
-        .orderBy(desc(histRank))
-        .limit(MAX_HISTORY);
-      for (const h of hist) {
-        if (h.content) out.push({ content: h.content, citation: `earlier message (${h.createdat.toISOString().slice(0, 10)})` });
-      }
+  // Always fold in the space's own prior messages (FR-019 amendment 2026-07-13 —
+  // SPOCK AI interrogates the pgvector'd docs AND the space history on every
+  // summon, regardless of the includehistory config flag).
+  const [space] = await db.select({ conversationid: spaces.conversationid }).from(spaces).where(eq(spaces.id, spaceid)).limit(1);
+  if (space) {
+    const histRank = sql<number>`ts_rank(to_tsvector('english', coalesce(${messages.content}, '')), ${tsq})`;
+    const hist = await db
+      .select({ content: messages.content, createdat: messages.createdat, rank: histRank })
+      .from(messages)
+      .where(
+        and(
+          eq(messages.conversationid, space.conversationid),
+          ne(messages.authorid, AI_ASSISTANT_AUTHOR_ID), // don't ground on the bot's own prior replies
+          isNotNull(messages.content),
+          sql`to_tsvector('english', coalesce(${messages.content}, '')) @@ ${tsq}`,
+        ),
+      )
+      .orderBy(desc(histRank))
+      .limit(MAX_HISTORY);
+    for (const h of hist) {
+      if (h.content) out.push({ content: h.content, citation: `earlier message (${h.createdat.toISOString().slice(0, 10)})` });
     }
   }
   return out;
@@ -131,38 +136,16 @@ async function resolveBotProvider(spaceid: string): Promise<AiProviderRow | null
   return def;
 }
 
-/** Names of up to two community members flagged "available to help" (FR-007). */
-async function availableHelpers(spaceid: string): Promise<string[]> {
-  const db = getDb();
-  if (!db) return [];
-  const [space] = await db.select({ communityid: spaces.communityid }).from(spaces).where(eq(spaces.id, spaceid)).limit(1);
-  if (!space) return [];
-  const rows = await db
-    .select({ status: communitymembers.availabilitystatus, userid: communitymembers.userid })
-    .from(communitymembers)
-    .where(and(eq(communitymembers.communityid, space.communityid), isNotNull(communitymembers.availabilitystatus)))
-    .limit(2);
-  // Resolve display names via the users table (auth-schema) — best-effort.
-  const { users } = await import("../db/auth-schema");
-  const out: string[] = [];
-  for (const r of rows) {
-    const [u] = await db.select({ name: users.displayname, email: users.email }).from(users).where(eq(users.id, r.userid)).limit(1);
-    const label = u?.name?.trim() || u?.email?.split("@")[0];
-    if (label) out.push(label);
-  }
-  return out;
-}
-
 export type AnswerResult = { answered: boolean; text: string; sources: RetrievedSource[] };
 
 /** Produce a cited answer to `question` grounded only in the space's sources. */
 export async function answerQuestion(spaceid: string, question: string): Promise<AnswerResult> {
   const sources = await retrieve(spaceid, question);
   if (!sources.length) {
-    return { answered: false, text: await declineText(spaceid), sources: [] };
+    return { answered: false, text: DECLINE_TEXT, sources: [] };
   }
   const provider = await resolveBotProvider(spaceid);
-  if (!provider) return { answered: false, text: await declineText(spaceid), sources };
+  if (!provider) return { answered: false, text: DECLINE_TEXT, sources };
 
   const context = sources.map((s, i) => `[Source ${i + 1}: ${s.citation}]\n${s.content}`).join("\n\n---\n\n");
   const system =
@@ -176,31 +159,33 @@ export async function answerQuestion(spaceid: string, question: string): Promise
     const res = await getAdapter(provider).complete({ system, messages: [{ role: "user", content: user }], maxTokens: 700 });
     const text = res.text.trim();
     if (!text || text.toUpperCase().startsWith(NO_ANSWER)) {
-      return { answered: false, text: await declineText(spaceid), sources };
+      return { answered: false, text: DECLINE_TEXT, sources };
     }
     return { answered: true, text, sources };
   } catch (err) {
     console.error("[spaceai] answer failed:", err);
-    return { answered: false, text: await declineText(spaceid), sources };
+    return { answered: false, text: DECLINE_TEXT, sources };
   }
 }
 
-/** The no-answer message, pointing at an available human when possible. */
-async function declineText(spaceid: string): Promise<string> {
-  const helpers = await availableHelpers(spaceid);
-  const base = "I couldn't find an answer to that in this space's documentation.";
-  if (helpers.length) return `${base} You may want to ask ${helpers.join(" or ")}, who are available to help.`;
-  return `${base} A member of the community may be able to help.`;
+// FR-019 (2026-07-13) — SPOCK AI is summoned by name, not by a question
+// heuristic. Matches "spockai" / "spock ai" / "spock" as a whole word,
+// case-insensitive.
+const SPOCK_RE = /\bspock\s*ai\b|\bspock\b/i;
+
+/** True when a message addresses the assistant by name ("Spock" / "SpockAI"). */
+export function mentionsSpock(text: string): boolean {
+  if (text.length > 2000) return false;
+  return SPOCK_RE.test(text);
 }
 
-/** Heuristic: does this message look like a question / support request? */
-export function looksLikeQuestion(text: string): boolean {
-  const t = text.trim().toLowerCase();
-  if (t.length < 3 || t.length > 1000) return false;
-  if (t.includes("?")) return true;
-  return /^(how|what|why|when|where|who|which|can|could|would|should|does|do|is|are|will|help|i can't|i cannot|i'm stuck|having trouble)\b/.test(
-    t,
-  );
+/** Strip the summon token so "Spock, how do I X?" retrieves on "how do I X?". */
+function stripSpockMention(text: string): string {
+  return text
+    .replace(/\bspock\s*ai\b/gi, " ")
+    .replace(/\bspock\b/gi, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 /**
@@ -221,10 +206,11 @@ export async function maybeAutoAnswerForConversation(
 }
 
 /**
- * Auto-answer hook — call after a member message is persisted in a space. If the
- * space's AI is enabled with auto-answer on and the message looks like a
- * question (and isn't from the bot itself), post a cited answer back into the
- * space. Fire-and-forget; never throws into the caller.
+ * Summon hook — call after a member message is persisted in a space. If the
+ * space's AI is enabled and the message names SPOCK AI ("Spock" / "SpockAI",
+ * and isn't from the bot itself), post a cited answer back into the space.
+ * Fire-and-forget; never throws into the caller. (FR-019 2026-07-13: name-gated,
+ * replacing the earlier "answer anything that looks like a question" behavior.)
  */
 export async function maybeAutoAnswer(input: {
   spaceid: string;
@@ -235,11 +221,12 @@ export async function maybeAutoAnswer(input: {
   try {
     if (input.authorid === AI_ASSISTANT_AUTHOR_ID) return; // don't answer ourselves
     const content = input.content?.trim();
-    if (!content || !looksLikeQuestion(content)) return;
+    if (!content || !mentionsSpock(content)) return;
     const config = await getSpaceAiConfig(input.spaceid);
-    if (!config || !config.enabled || !config.autoanswer) return;
+    if (!config || !config.enabled) return;
 
-    const { answered, text, sources } = await answerQuestion(input.spaceid, content);
+    const query = stripSpockMention(content) || content;
+    const { answered, text, sources } = await answerQuestion(input.spaceid, query);
     const citations = answered && sources.length ? `\n\nSources: ${sources.map((s) => s.citation).join("; ")}` : "";
     await postSystemMessage({
       conversationid: input.conversationid,
