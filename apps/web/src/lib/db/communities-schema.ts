@@ -1,6 +1,21 @@
-import { boolean, index, integer, jsonb, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, customType, index, integer, jsonb, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { ycSchema } from "./schema-base";
 import { channels, conversations } from "./engine-schema";
+
+/**
+ * pgvector column for spec 017 FR-019 semantic retrieval. Stored as a 768-dim
+ * `vector` (Gemini text-embedding-004); read/written as a plain number[] and
+ * serialized to the pgvector text literal `[a,b,…]`. Nullable — a chunk indexed
+ * before embeddings were configured falls back to full-text search.
+ */
+const embeddingVector = customType<{ data: number[]; driverData: string }>({
+  dataType() {
+    return "vector(768)";
+  },
+  toDriver(value: number[]): string {
+    return `[${value.join(",")}]`;
+  },
+});
 
 /**
  * Spec 017 (Communities) T001 — community structure.
@@ -196,8 +211,9 @@ export const communityauditlog = ycSchema.table(
  * A space may opt in to an AI assistant grounded ONLY in owner-provided sources
  * (a crawled website snapshot, uploaded documents, and/or the space's own
  * history). Source text is chunked into `spaceaichunks` and retrieved at
- * question time (Postgres full-text in v1; a pgvector embedding column is the
- * planned follow-up). This is DISTINCT from the community-wide history RAG of
+ * question time via pgvector cosine similarity over the `embedding` column
+ * (Postgres full-text is the fallback when embeddings are unconfigured). This is
+ * DISTINCT from the community-wide history RAG of
  * FR-015. Retrieval is hard-scoped to a single space via `spaceid`.
  */
 export const spaceAiSourceKindEnum = ycSchema.enum("spaceaisourcekind", [
@@ -270,6 +286,9 @@ export const spaceaichunks = ycSchema.table(
     // Citation anchor: a page URL, a "p.N" page marker, or a section heading.
     anchor: text("anchor").notNull().default(""),
     tokens: integer("tokens"),
+    // FR-019 semantic search — 768-dim Gemini embedding; NULL until embedded.
+    // Retrieval orders by cosine distance via the hnsw index (see migration 0026).
+    embedding: embeddingVector("embedding"),
     createdat: timestamp("createdat", { withTimezone: true }).notNull().defaultNow(),
   },
   // A GIN full-text index on to_tsvector(content) is added by hand in the

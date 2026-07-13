@@ -4,6 +4,7 @@ import { getDb } from "../db/client";
 import { spaceaichunks, spaceaiconfig, spaceaisources, type SpaceAiSourceRow } from "../db/communities-schema";
 import { getObjectBytes } from "../storage/s3";
 import { getSpaceAiConfig, setSourceStatus } from "./spaceai";
+import { embedTexts, embeddingsConfigured } from "./embeddings";
 
 /**
  * Spec 017 FR-019 — knowledge-source indexing for the per-space support AI.
@@ -15,7 +16,8 @@ import { getSpaceAiConfig, setSourceStatus } from "./spaceai";
  *  - history: NOT chunked here — retrieved live from the space's messages.
  *
  * v1 retrieval is Postgres full-text over chunk `content` (see spaceai-answer);
- * a pgvector embedding column is the planned follow-up.
+ * each chunk is embedded (Gemini) into the pgvector `embedding` column for
+ * semantic retrieval; full-text is the fallback when embeddings are unconfigured.
  */
 
 const USER_AGENT = "YappChatBot/1.0 (+https://yappchat.example/bot)";
@@ -216,16 +218,31 @@ async function insertChunks(
 ): Promise<number> {
   const db = getDb();
   if (!db) return 0;
-  const rows = pieces
-    .filter((p) => p.content.trim())
-    .map((p) => ({
-      id: uuidv7(),
-      spaceid,
-      sourceid,
-      content: p.content,
-      anchor: p.anchor.slice(0, 500),
-      tokens: Math.ceil(p.content.length / 4),
-    }));
+  const filtered = pieces.filter((p) => p.content.trim());
+  if (!filtered.length) return 0;
+
+  // Embed each chunk for pgvector semantic retrieval (FR-019). Best-effort: if
+  // embeddings aren't configured or the call fails, store the chunks text-only so
+  // the full-text fallback still answers.
+  let embeddings: number[][] | null = null;
+  if (embeddingsConfigured()) {
+    try {
+      embeddings = await embedTexts(filtered.map((p) => p.content));
+    } catch (err) {
+      console.error("[spaceai] embedding failed — storing chunks text-only:", err);
+      embeddings = null;
+    }
+  }
+
+  const rows = filtered.map((p, i) => ({
+    id: uuidv7(),
+    spaceid,
+    sourceid,
+    content: p.content,
+    anchor: p.anchor.slice(0, 500),
+    tokens: Math.ceil(p.content.length / 4),
+    embedding: embeddings?.[i]?.length ? embeddings[i] : null,
+  }));
   // Insert in batches to stay under parameter limits.
   for (let i = 0; i < rows.length; i += 200) {
     await db.insert(spaceaichunks).values(rows.slice(i, i + 200));

@@ -150,6 +150,34 @@ export async function configureSpaceAi(spaceid: string, input: ConfigureSpaceAiI
   return getSpaceAiState(spaceid);
 }
 
+/**
+ * FR-019 — append one uploaded-document knowledge source (status `pending`) after
+ * its bytes have been stored to `storagekey`. Kept separate from `configureSpaceAi`
+ * so a document upload adds a source without touching the AI config or other
+ * sources. The caller (upload route) is responsible for authorization + storage,
+ * then typically fires `indexSpaceAi(spaceid)` to materialize its chunks.
+ */
+export async function addDocumentSource(
+  spaceid: string,
+  storagekey: string,
+  title?: string,
+): Promise<SpaceAiSourceRow> {
+  const db = getDb();
+  if (!db) throw new EngineError("db_unavailable", 503);
+  const [row] = await db
+    .insert(spaceaisources)
+    .values({
+      id: uuidv7(),
+      spaceid,
+      kind: "document",
+      storagekey,
+      title: title?.trim() || storagekey.split("/").pop() || "document",
+      status: "pending",
+    })
+    .returning();
+  return row;
+}
+
 /** Remove all materialized chunks for a space (used before a re-index). */
 export async function clearSpaceAiChunks(spaceid: string): Promise<void> {
   const db = getDb();

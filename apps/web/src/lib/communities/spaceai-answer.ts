@@ -6,18 +6,26 @@ import { messages } from "../db/engine-schema";
 import { getAdapter } from "../pa/adapters";
 import { postSystemMessage } from "../engine/service";
 import { AI_ASSISTANT_AUTHOR_ID, AI_ASSISTANT_LABEL, getSpaceAiConfig } from "./spaceai";
+import { embedQuery, embeddingsConfigured, toVectorLiteral } from "./embeddings";
 
 /**
  * Spec 017 FR-019 — per-space support AI retrieval + auto-answer.
  *
- * Retrieval is Postgres full-text, HARD-SCOPED to a single space's chunks (and,
- * if enabled, that space's own message history). The model answers ONLY from the
- * retrieved sources, in the asker's language, and cites them; when nothing
- * relevant is found it declines and surfaces an available human (FR-007).
+ * Retrieval is pgvector semantic search over the space's chunk embeddings
+ * (Gemini text-embedding-004, cosine distance via the hnsw index), HARD-SCOPED to
+ * a single space's chunks — with a Postgres full-text fallback when embeddings
+ * aren't configured. If enabled, the space's own message history is folded in
+ * (full-text). The model answers ONLY from the retrieved sources, in the asker's
+ * language, and cites them; when nothing relevant is found it declines and
+ * surfaces an available human (FR-007).
  */
 
 const MAX_CHUNKS = 6;
 const MAX_HISTORY = 4;
+// Cosine-distance ceiling for a chunk to count as relevant (0 = identical,
+// 1 = orthogonal). Vector search always returns k-nearest, so this drops
+// clearly-unrelated chunks; the model's NOANSWER path is the final guard.
+const VECTOR_MAX_DIST = 0.8;
 const NO_ANSWER = "NOANSWER";
 
 export type RetrievedSource = { content: string; citation: string };
@@ -30,27 +38,60 @@ async function retrieve(spaceid: string, query: string): Promise<RetrievedSource
   if (!q) return [];
 
   const tsq = sql`plainto_tsquery('english', ${q})`;
-  const rank = sql<number>`ts_rank(to_tsvector('english', ${spaceaichunks.content}), ${tsq})`;
+  const cite = (r: { anchor: string; title: string | null; url: string | null; kind: string }) =>
+    r.anchor || r.title || r.url || (r.kind === "website" ? "website" : "document");
 
-  const chunkRows = await db
-    .select({
-      content: spaceaichunks.content,
-      anchor: spaceaichunks.anchor,
-      url: spaceaisources.url,
-      title: spaceaisources.title,
-      kind: spaceaisources.kind,
-      rank,
-    })
-    .from(spaceaichunks)
-    .innerJoin(spaceaisources, eq(spaceaichunks.sourceid, spaceaisources.id))
-    .where(and(eq(spaceaichunks.spaceid, spaceid), sql`to_tsvector('english', ${spaceaichunks.content}) @@ ${tsq}`))
-    .orderBy(desc(rank))
-    .limit(MAX_CHUNKS);
+  const out: RetrievedSource[] = [];
 
-  const out: RetrievedSource[] = chunkRows.map((r) => ({
-    content: r.content,
-    citation: r.anchor || r.title || r.url || (r.kind === "website" ? "website" : "document"),
-  }));
+  // ── Source chunks: pgvector semantic search (FR-019), full-text fallback ──
+  let usedVector = false;
+  if (embeddingsConfigured()) {
+    try {
+      const qvec = await embedQuery(q);
+      if (qvec.length) {
+        const dist = sql<number>`${spaceaichunks.embedding} <=> ${toVectorLiteral(qvec)}::vector`;
+        const rows = await db
+          .select({
+            content: spaceaichunks.content,
+            anchor: spaceaichunks.anchor,
+            url: spaceaisources.url,
+            title: spaceaisources.title,
+            kind: spaceaisources.kind,
+            dist,
+          })
+          .from(spaceaichunks)
+          .innerJoin(spaceaisources, eq(spaceaichunks.sourceid, spaceaisources.id))
+          .where(and(eq(spaceaichunks.spaceid, spaceid), isNotNull(spaceaichunks.embedding)))
+          .orderBy(dist) // ascending cosine distance = most similar first
+          .limit(MAX_CHUNKS);
+        for (const r of rows) {
+          if (r.dist != null && r.dist <= VECTOR_MAX_DIST) out.push({ content: r.content, citation: cite(r) });
+        }
+        usedVector = true;
+      }
+    } catch (err) {
+      console.error("[spaceai] vector retrieve failed — falling back to full-text:", err);
+    }
+  }
+
+  if (!usedVector) {
+    const rank = sql<number>`ts_rank(to_tsvector('english', ${spaceaichunks.content}), ${tsq})`;
+    const rows = await db
+      .select({
+        content: spaceaichunks.content,
+        anchor: spaceaichunks.anchor,
+        url: spaceaisources.url,
+        title: spaceaisources.title,
+        kind: spaceaisources.kind,
+        rank,
+      })
+      .from(spaceaichunks)
+      .innerJoin(spaceaisources, eq(spaceaichunks.sourceid, spaceaisources.id))
+      .where(and(eq(spaceaichunks.spaceid, spaceid), sql`to_tsvector('english', ${spaceaichunks.content}) @@ ${tsq}`))
+      .orderBy(desc(rank))
+      .limit(MAX_CHUNKS);
+    for (const r of rows) out.push({ content: r.content, citation: cite(r) });
+  }
 
   // Optionally fold in the space's own history.
   const config = await getSpaceAiConfig(spaceid);
