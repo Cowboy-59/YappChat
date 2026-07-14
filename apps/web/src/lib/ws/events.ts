@@ -100,6 +100,11 @@ export const WSEventType = {
   // recipient's user:{id} scope so the app-wide client can notify (toast + sound
   // + desktop notification) even when not subscribed to that conversation.
   MessageNotify: "message.notify",
+  // Spec 087 (1:1 DM call slice) — call signaling on the peer's user:{id} scope.
+  CallRing: "call.ring",
+  CallAccepted: "call.accepted",
+  CallDeclined: "call.declined",
+  CallEnded: "call.ended",
   // spec 071 (Presentation) — routed on the `videoroom:{presentationid}` scope.
   VideoroomParticipantJoined: "videoroom.participant_joined",
   VideoroomParticipantLeft: "videoroom.participant_left",

@@ -56,6 +56,7 @@ export function RemoteControlStage({
       room = new Room();
       room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack) => {
         if (track.kind === Track.Kind.Video && videoRef.current) track.attach(videoRef.current);
+        if (track.kind === Track.Kind.Audio) track.attach(); // voice — hear the other party
       });
       room.on(RoomEvent.ConnectionStateChanged, (s) => setStatus(String(s)));
       try {
@@ -67,6 +68,12 @@ export function RemoteControlStage({
       if (cancelled) {
         void room.disconnect();
         return;
+      }
+      // Both parties talk during control (voice, no camera).
+      try {
+        await room.localParticipant.setMicrophoneEnabled(true);
+      } catch {
+        /* mic denied — control still works, just no voice */
       }
       if (role === "host") {
         // Share the FULL display (coordinate mapping needs a whole screen). If the

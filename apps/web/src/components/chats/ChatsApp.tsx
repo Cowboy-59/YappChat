@@ -464,7 +464,23 @@ function Inner({ autoTranslate, currentUserId }: { autoTranslate: boolean; curre
             <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 text-sm font-semibold text-foreground">
               <span className="min-w-0 truncate">{activeName || "Chat"}</span>
               {activeConv && !isGroup && (
-                <RemoteControlPanel key={activeConv} conversationId={activeConv} currentUserId={currentUserId} peerName={activeName || "this person"} />
+                <span className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    title={`Call ${activeName || "this person"}`}
+                    onClick={() =>
+                      window.dispatchEvent(
+                        new CustomEvent("dm:call-start", {
+                          detail: { conversationId: activeConv, peerName: activeName || "this person" },
+                        }),
+                      )
+                    }
+                    className="inline-flex min-h-[30px] items-center justify-center rounded-lg border border-border px-2.5 text-xs font-semibold hover:bg-muted"
+                  >
+                    📞 Call
+                  </button>
+                  <RemoteControlPanel key={activeConv} conversationId={activeConv} currentUserId={currentUserId} peerName={activeName || "this person"} />
+                </span>
               )}
             </div>
             <div ref={scrollRef} onScroll={onListScroll} className="min-h-0 flex-1 overflow-y-auto p-4">

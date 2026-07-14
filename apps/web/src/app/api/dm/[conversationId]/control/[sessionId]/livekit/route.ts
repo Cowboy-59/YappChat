@@ -25,7 +25,9 @@ export async function POST(_req: Request, { params }: Params) {
       identity: ctx.user.id,
       name: ctx.user.displayname ?? ctx.user.id,
       room: `rc-${sessionId}`,
-      canPublish: isHost, // the host shares their screen; the controller only watches
+      // Both publish so they can TALK during control (voice); the host also
+      // publishes their screen track, the controller publishes audio only.
+      canPublish: true,
       canSubscribe: true,
       canPublishData: false,
     });

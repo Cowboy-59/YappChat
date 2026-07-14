@@ -3,6 +3,7 @@
 import { WSProvider, useWSEvent } from "./WSProvider";
 import { WSEventType } from "@/lib/ws/events";
 import { MessageNotifications } from "./MessageNotifications";
+import { DmCallManager } from "./DmCallManager";
 
 /**
  * Spec 011 integration over the spec 003 WS engine:
@@ -30,6 +31,7 @@ export function AppRealtime({ currentSessionId = null }: { currentSessionId?: st
     <WSProvider>
       <AuthSignoutListener currentSessionId={currentSessionId} />
       <MessageNotifications />
+      <DmCallManager />
     </WSProvider>
   );
 }
