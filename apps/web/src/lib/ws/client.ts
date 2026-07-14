@@ -1,4 +1,4 @@
-import type { ClientMessage, ServerMessage, WSEvent } from "./events";
+import type { ClientMessage, ControlInput, ServerMessage, WSEvent } from "./events";
 
 /**
  * Spec 003 — browser WS client.
@@ -179,6 +179,18 @@ export class WSClient {
   unsubscribe(scope: string): void {
     this.subs.delete(scope);
     this.send({ action: "unsubscribe", scope });
+  }
+
+  /** Spec 088 — relay one input event to the control session's agent. */
+  sendControlInput(sessionId: string, input: ControlInput): void {
+    this.send({ action: "control_input", sessionId, input });
+  }
+  /** Spec 088 — host reclaim: pause / resume remote control. */
+  sendControlPause(sessionId: string): void {
+    this.send({ action: "control_pause", sessionId });
+  }
+  sendControlResume(sessionId: string): void {
+    this.send({ action: "control_resume", sessionId });
   }
 
   /** Send a typing signal for a channel, debounced so keystrokes don't spam. */

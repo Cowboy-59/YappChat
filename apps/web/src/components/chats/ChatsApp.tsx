@@ -3,6 +3,7 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { WSProvider, useWSClient, useWSEvent } from "@/components/ws/WSProvider";
+import { RemoteControlPanel } from "@/components/chats/RemoteControlPanel";
 import { MessageText } from "@/components/chat/MessageText";
 import { scopes, type WSEvent } from "@/lib/ws/events";
 import { EmojiPicker } from "./EmojiPicker";
@@ -90,7 +91,7 @@ function DateDivider({ iso }: { iso?: string }) {
  * opens a conversation; `?new=1` opens the add-person modal. It still fetches
  * contacts/chats to resolve the active conversation's title + send-gating.
  */
-function Inner({ autoTranslate }: { autoTranslate: boolean }) {
+function Inner({ autoTranslate, currentUserId }: { autoTranslate: boolean; currentUserId: string }) {
   const ws = useWSClient();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -460,7 +461,12 @@ function Inner({ autoTranslate }: { autoTranslate: boolean }) {
           </div>
         ) : (
           <>
-            <div className="border-b border-border px-4 py-3 text-sm font-semibold text-foreground">{activeName || "Chat"}</div>
+            <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 text-sm font-semibold text-foreground">
+              <span className="min-w-0 truncate">{activeName || "Chat"}</span>
+              {activeConv && !isGroup && (
+                <RemoteControlPanel key={activeConv} conversationId={activeConv} currentUserId={currentUserId} peerName={activeName || "this person"} />
+              )}
+            </div>
             <div ref={scrollRef} onScroll={onListScroll} className="min-h-0 flex-1 overflow-y-auto p-4">
               <div className="space-y-3" style={{ zoom }}>
               {messages.map((m, i) => {
@@ -856,10 +862,10 @@ function NewChatModal({
   );
 }
 
-export function ChatsApp({ autoTranslate }: { autoTranslate: boolean }) {
+export function ChatsApp({ autoTranslate, currentUserId }: { autoTranslate: boolean; currentUserId: string }) {
   return (
     <WSProvider>
-      <Inner autoTranslate={autoTranslate} />
+      <Inner autoTranslate={autoTranslate} currentUserId={currentUserId} />
     </WSProvider>
   );
 }

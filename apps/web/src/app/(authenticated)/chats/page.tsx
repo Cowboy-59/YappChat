@@ -10,7 +10,7 @@ export default async function ChatsPage() {
   if (!user) redirect("/signin?return=/chats");
   return (
     <main className="flex flex-1 flex-col px-4 py-4 min-h-0">
-      <ChatsApp autoTranslate={user.autotranslate} />
+      <ChatsApp autoTranslate={user.autotranslate} currentUserId={user.id} />
     </main>
   );
 }

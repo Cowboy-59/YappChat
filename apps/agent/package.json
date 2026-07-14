@@ -1,0 +1,21 @@
+{
+  "name": "@yappchat/control-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Spec 088 — ephemeral, single-use Windows helper that injects mouse/keyboard for a YappChat DM remote-control session. Input-only (screen video rides LiveKit). Connects outbound, self-terminates when the session ends.",
+  "type": "module",
+  "bin": {
+    "yappchat-control-agent": "src/agent.mjs"
+  },
+  "scripts": {
+    "start": "node src/agent.mjs",
+    "package": "pkg . --targets node18-win-x64 --output dist/yappchat-agent.exe"
+  },
+  "dependencies": {
+    "@nut-tree-fork/nut-js": "^4.2.0",
+    "ws": "^8.18.0"
+  },
+  "optionalDependencies": {
+    "uiohook-napi": "^1.5.4"
+  }
+}

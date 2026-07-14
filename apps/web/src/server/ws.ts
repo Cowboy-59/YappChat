@@ -34,9 +34,11 @@ import { sessions, users, orgmemberships } from "../lib/db/auth-schema";
 import { conversationmembers } from "../lib/db/engine-schema";
 import { communitymembers } from "../lib/db/communities-schema";
 import { presentations, presentationattendees } from "../lib/db/presentations-schema";
+import { remotecontrolsessions } from "../lib/db/remotecontrol-schema";
 import { wssessions, wsevents } from "../lib/db/ws-schema";
 import { hashToken } from "../lib/auth/crypto";
 import { scopes, WSEventType, type PresenceStatus } from "../lib/ws/events";
+import { endControl, pauseControl, registerAgent, resumeControl } from "../lib/remotecontrol/service";
 import type { ClientMessage, ServerMessage, WSEvent } from "../lib/ws/events";
 import { verifyWsToken } from "../lib/ws/token";
 import { evaluateCapacity, initialCapacityState, type CapacityState } from "../lib/ws/capacity";
@@ -81,9 +83,15 @@ type Client = {
   queue: Promise<void>;
   /** per-channel auto typing-stop timers */
   typingTimers: Map<string, ReturnType<typeof setTimeout>>;
+  /** Spec 088 — set when this connection is a control agent (not a user). */
+  controlSessionId?: string;
 };
 
 const clients = new Map<WebSocket, Client>();
+// Spec 088 — live control sessions: the connected agent + cached authz meta so
+// the high-frequency input relay never touches the DB per event.
+type ControlMeta = { controller: string; host: string; agent: Client; status: "granted" | "paused" };
+const controlSessions = new Map<string, ControlMeta>();
 const bySessionId = new Map<string, Client>();
 /** userid -> live sessions (presence is online while this set is non-empty). */
 const userSessions = new Map<string, Set<Client>>();
@@ -217,6 +225,19 @@ async function canSubscribe(userid: string, scope: string): Promise<boolean> {
     }
     return false;
   }
+  // Spec 088: a remote-control session scope is subscribable only by its two
+  // participants (controller + host) — verified against the session row.
+  if (scope.startsWith("remotecontrol:")) {
+    const sessionid = scope.slice("remotecontrol:".length);
+    const db = getDb();
+    if (!db) return false;
+    const [s] = await db
+      .select({ controller: remotecontrolsessions.controlleruserid, host: remotecontrolsessions.hostuserid })
+      .from(remotecontrolsessions)
+      .where(eq(remotecontrolsessions.id, sessionid))
+      .limit(1);
+    return Boolean(s && (s.controller === userid || s.host === userid));
+  }
   // Spec 001 (T2): the legacy channel scope stays open until the per-conversation
   // model fully supersedes it (FR-008/009). Other scopes (agent/pairing) deferred.
   if (scope.startsWith("channel:")) return true;
@@ -313,6 +334,14 @@ async function removeClient(client: Client): Promise<void> {
   bySessionId.delete(client.sessionid);
   for (const timer of client.typingTimers.values()) clearTimeout(timer);
   client.typingTimers.clear();
+  // Spec 088 — a control agent dropping ends the session (fail-closed: no
+  // standing access, no orphaned agent). Agents have no wssessions row/presence.
+  if (client.controlSessionId) {
+    const meta = controlSessions.get(client.controlSessionId);
+    if (meta && meta.agent === client) controlSessions.delete(client.controlSessionId);
+    await endControl(client.controlSessionId, null, "disconnected").catch(() => {});
+    return;
+  }
   const db = getDb();
   if (db) await db.delete(wssessions).where(eq(wssessions.id, client.sessionid)).catch(() => {});
   await onClientOffline(client);
@@ -441,6 +470,42 @@ async function handleMessage(client: Client, raw: string): Promise<void> {
     case "typing_stop":
       stopTyping(client, msg.channelid);
       break;
+    // Spec 088 — relay a controller's input to the session's agent. In-memory
+    // authz (no DB per event): sender must be the controller, session granted
+    // (not paused), agent connected. Anything else is silently dropped.
+    case "control_input": {
+      const meta = controlSessions.get(msg.sessionId);
+      if (meta && meta.status === "granted" && meta.controller === client.userid) {
+        send(meta.agent.ws, { type: "control_input", input: msg.input });
+      }
+      break;
+    }
+    // FR-011 — the host's own input reclaims control (pause); resume when idle.
+    // The agent (which sees the host's physical input) or the host's browser may
+    // signal this; both are authorized for the session.
+    case "control_pause": {
+      // Agents don't know their session id — resolve it from the connection.
+      const sessionId = client.controlSessionId ?? msg.sessionId;
+      const meta = controlSessions.get(sessionId);
+      const fromHost = Boolean(meta && meta.host === client.userid);
+      const fromAgent = Boolean(client.controlSessionId) && client.controlSessionId === sessionId;
+      if (meta && (fromHost || fromAgent) && meta.status === "granted") {
+        meta.status = "paused";
+        void pauseControl(sessionId, fromHost ? client.userid : null);
+      }
+      break;
+    }
+    case "control_resume": {
+      const sessionId = client.controlSessionId ?? msg.sessionId;
+      const meta = controlSessions.get(sessionId);
+      const fromHost = Boolean(meta && meta.host === client.userid);
+      const fromAgent = Boolean(client.controlSessionId) && client.controlSessionId === sessionId;
+      if (meta && (fromHost || fromAgent) && meta.status === "paused") {
+        meta.status = "granted";
+        void resumeControl(sessionId, fromHost ? client.userid : null);
+      }
+      break;
+    }
   }
 }
 
@@ -575,11 +640,65 @@ const httpServer = createServer(async (req, res) => {
 
 const wss = new WebSocketServer({ server: httpServer });
 
+/**
+ * Spec 088 — a control helper agent connects with ?controltoken=… (a single-use
+ * token minted when the host allowed control). We validate + consume it via
+ * registerAgent (which grants the session), then hold the connection as the
+ * input sink: force-subscribed to `remotecontrol:{sessionId}` (so it receives
+ * paused/resumed/ended status and self-terminates), and registered in
+ * `controlSessions` so the controller's input can be relayed to it directly.
+ */
+async function handleAgentConnection(ws: WebSocket, token: string): Promise<void> {
+  const session = await registerAgent(token);
+  if (!session) {
+    send(ws, { type: "error", error: "invalid_control_token" });
+    ws.close(4401, "invalid_control_token");
+    return;
+  }
+  const sessionid = uuidv7();
+  const client: Client = {
+    ws,
+    sessionid,
+    userid: `agent:${session.id}`,
+    subs: new Set([scopes.remotecontrol(session.id)]),
+    isAlive: true,
+    queue: Promise.resolve(),
+    typingTimers: new Map(),
+    controlSessionId: session.id,
+  };
+  clients.set(ws, client);
+  bySessionId.set(sessionid, client);
+  controlSessions.set(session.id, {
+    controller: session.controlleruserid,
+    host: session.hostuserid,
+    agent: client,
+    status: "granted",
+  });
+
+  ws.on("pong", () => {
+    client.isAlive = true;
+  });
+  ws.on("message", (data) => {
+    client.queue = client.queue
+      .then(() => handleMessage(client, String(data)))
+      .catch((err) => console.error("[ws] agent message error:", (err as Error).message));
+  });
+  ws.on("close", () => void removeClient(client));
+  ws.on("error", () => void removeClient(client));
+  send(ws, { type: "connected", sessionid, userid: client.userid, servertime: Date.now() });
+}
+
 wss.on("connection", async (ws, req) => {
   // Primary auth: a signed short-lived token in the handshake URL (?token=…) —
   // works cross-domain (browser on the app's domain → engine on ws.wxperts.com).
   // Fallback: the yc_session cookie (same-site/local dev).
   const url = new URL(req.url ?? "/", `http://localhost:${WS_PORT}`);
+  // Spec 088 — a control agent authenticates with its single-use control token.
+  const controlToken = url.searchParams.get("controltoken");
+  if (controlToken) {
+    await handleAgentConnection(ws, controlToken);
+    return;
+  }
   let userid = verifyWsToken(url.searchParams.get("token"));
   if (!userid) {
     const cookies = parseCookies(req.headers.cookie);

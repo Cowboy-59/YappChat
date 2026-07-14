@@ -23,6 +23,9 @@ export const scopes = {
   agent: (agentid: string) => `agent:${agentid}`,
   videoroom: (roomid: string) => `videoroom:${roomid}`,
   pairing: (pairingid: string) => `pairing:${pairingid}`,
+  // Spec 088 — per remote-control-session routing key; subscribe is authorized
+  // against the session's two participants. Carries status + (slice 8) input relay.
+  remotecontrol: (sessionid: string) => `remotecontrol:${sessionid}`,
   broadcast: "broadcast" as const,
 };
 
@@ -37,7 +40,23 @@ export type ClientMessage =
   | { action: "resume"; lastEventId: string }
   // T006 typing indicators.
   | { action: "typing"; channelid: string }
-  | { action: "typing_stop"; channelid: string };
+  | { action: "typing_stop"; channelid: string }
+  // Spec 088 — remote-control input relay + host reclaim signals.
+  | { action: "control_input"; sessionId: string; input: ControlInput }
+  | { action: "control_pause"; sessionId: string }
+  | { action: "control_resume"; sessionId: string };
+
+/**
+ * Spec 088 — one injected-input event, controller → agent. Pointer coordinates
+ * are NORMALIZED to [0,1] over the shared display (the agent maps them to real
+ * pixels); keys are cross-platform key names / text.
+ */
+export type ControlInput =
+  | { t: "move"; x: number; y: number }
+  | { t: "down" | "up"; x: number; y: number; button: "left" | "right" | "middle" }
+  | { t: "scroll"; x: number; y: number; dx: number; dy: number }
+  | { t: "key"; key: string; down: boolean }
+  | { t: "text"; text: string };
 
 /** Server -> client messages. */
 export type ServerMessage =
@@ -54,7 +73,9 @@ export type ServerMessage =
   // T005 replay sequence.
   | { type: "replay_start"; count: number }
   | { type: "replay_end" }
-  | { type: "replay_unavailable"; reason: string };
+  | { type: "replay_unavailable"; reason: string }
+  // Spec 088 — server → agent: a relayed input event to inject.
+  | { type: "control_input"; input: ControlInput };
 
 /**
  * Well-known event types. The engine has NO knowledge of what these MEAN — each
@@ -90,6 +111,10 @@ export const WSEventType = {
   // membership-checked `conversation:{id}` scope.
   SupportRequested: "support.requested",
   SupportClosed: "support.closed",
+  // Spec 088 — a remote-control session changed state (requested/allowed/granted/
+  // paused/resumed/ended). Delivered to both participants' user scopes + the
+  // remotecontrol:{sessionId} scope so consent prompt, banner, and UI stay in sync.
+  RemoteControlUpdated: "remotecontrol.updated",
 } as const;
 
 /** Presence states tracked in-memory by the engine (never persisted). */
