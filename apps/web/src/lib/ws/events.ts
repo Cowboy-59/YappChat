@@ -96,6 +96,10 @@ export const WSEventType = {
   MessageDeleted: "message.deleted",
   // spec 018 FR-025 — an invite/request you sent was accepted; user:{inviterid} scope.
   ContactAccepted: "contact.accepted",
+  // A new message arrived in a conversation you belong to — fanned out to each
+  // recipient's user:{id} scope so the app-wide client can notify (toast + sound
+  // + desktop notification) even when not subscribed to that conversation.
+  MessageNotify: "message.notify",
   // spec 071 (Presentation) — routed on the `videoroom:{presentationid}` scope.
   VideoroomParticipantJoined: "videoroom.participant_joined",
   VideoroomParticipantLeft: "videoroom.participant_left",

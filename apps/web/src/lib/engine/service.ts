@@ -18,7 +18,7 @@ import {
 import { publishEvent } from "../ws/broker";
 import { presignAttachments, type Attachment } from "../storage/s3";
 import { resolveAvatarUrl } from "../account/avatar-resolve";
-import { scopes } from "../ws/events";
+import { scopes, WSEventType } from "../ws/events";
 import { EngineError } from "./errors";
 import { sendViaPlugin, startAccount } from "./gateway";
 import type { NormalizedMessage } from "./types";
@@ -352,6 +352,46 @@ async function publishMessageEvent(
     conversationKind === "support";
   if (!isPrivateNative) {
     await publishEvent({ type, scope: scopes.channel(channelid), payload: msg });
+  }
+  // In-app "message arrived" notifications: fan a lightweight notify to each DM
+  // recipient's user scope (they aren't subscribed to the conversation app-wide).
+  // Only for 1:1/group DMs (small membership) + real chat messages, never the
+  // author. Fire-and-forget — must never block or fail the send.
+  if ((conversationKind === "person" || conversationKind === "group") && msg.messagetype !== "status") {
+    void fanoutMessageNotify(msg);
+  }
+}
+
+/** Publish `message.notify` to every recipient's `user:{id}` scope (except author). */
+async function fanoutMessageNotify(msg: NormalizedMessage): Promise<void> {
+  const db = getDb();
+  if (!db || !msg.conversationid) return;
+  try {
+    const members = await db
+      .select({ userid: conversationmembers.userid })
+      .from(conversationmembers)
+      .where(eq(conversationmembers.conversationid, msg.conversationid));
+    const preview = msg.content?.trim()
+      ? msg.content.trim().slice(0, 120)
+      : msg.media?.length
+        ? "📎 Attachment"
+        : "New message";
+    const payload = {
+      conversationid: msg.conversationid,
+      authorid: msg.authorid,
+      authorname: msg.authorname,
+      authoravatar: msg.authoravatar,
+      preview,
+      route: `/chats?conv=${msg.conversationid}`,
+      createdat: msg.createdat,
+    };
+    await Promise.all(
+      members
+        .filter((m) => m.userid !== msg.authorid)
+        .map((m) => publishEvent({ type: WSEventType.MessageNotify, scope: scopes.user(m.userid), payload })),
+    );
+  } catch (err) {
+    console.error("[engine] message notify fanout failed:", (err as Error).message);
   }
 }
 
