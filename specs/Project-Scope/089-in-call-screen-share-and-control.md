@@ -40,7 +40,7 @@ Both gaps are wiring, not new machinery: LiveKit screen-share publishing already
 
 ## Scope Boundary
 
-**IN (v1):** In a 1:1 DM **call** (spec 087): a **Share Screen** control (select a screen via the native picker, **switch** the shared screen, **cancel/stop** sharing) publishing a `ScreenShare` track on the existing `dm-call-<id>` room, **no download**; the call's remote render distinguishing screen-share (full-frame) from camera (PiP); a **Give Control** / **Revoke Control** affordance shown to the sharer while sharing, reusing spec 088's consent/token/WS relay/pause/panic/audit, with the controller driving the **call's shared screen track** (no second `rc-` room); **environment-aware injection** — Electron desktop injects **in-process** (no download), browser **falls back to the spec 088 agent download**; a **minimal Electron desktop shell** (`apps/desktop`) that loads the deployed web UI and injects input in-process via a shared nut.js core extracted from `apps/agent`.
+**IN (v1):** In a 1:1 DM **call** (spec 087): a **Share Screen** control (select a screen via the native picker, **switch** the shared screen, **cancel/stop** sharing) publishing a `ScreenShare` track on the existing `dm-call-<id>` room, **no download**; the call's remote render distinguishing screen-share (full-frame) from camera (PiP); a **Give Control** / **Revoke Control** affordance shown to the sharer while sharing (host-initiated via a **new `/control/offer` route** that reuses spec 088's session/token service; the sharer's click is the consent act), reusing spec 088's token/WS relay/pause/panic/audit, with the controller driving the **call's shared screen track** (no second `rc-` room); **environment-aware injection** — Electron desktop injects **in-process** (no download), browser **falls back to the spec 088 agent download**; a **minimal Electron desktop shell** (`apps/desktop`) that loads the deployed web UI and injects input in-process via a shared nut.js core extracted from `apps/agent`.
 
 **OUT (v1):** Screen share / give-control in **group DMs, communities, or conference rooms** (087 multi-party); multiple simultaneous sharers in one call; a custom in-app thumbnail screen picker (v1 uses the native `getDisplayMedia`/OS picker); macOS/Linux native injection (Windows-only, inherited from spec 088); giving control from a **browser without** the fallback agent; the rest of the desktop client from `stack.md` — **offline SQLite cache, auto-update, and signed per-OS installers** (deferred to a later desktop scope); clipboard sync, file transfer, and unattended access (already out per spec 088).
 
@@ -109,8 +109,9 @@ The full desktop client per `apps/desktop/stack.md` (this ships a **minimal runn
 - **FR-004** — The peer's call view **distinguishes** the screen-share track (rendered full-frame) from the camera track (demoted to PiP). At most **one** screen share exists in a call at a time (last-clicker wins).
 
 ### Give / revoke control in a call (reused machinery, new wiring)
-- **FR-005** — While a participant is sharing a screen in the call, a **Give Control** affordance is shown to that sharer; it flips to **Revoke Control** while control is granted.
-- **FR-006** — Giving control reuses spec 088 **unchanged**: per-session consent, single-use token, `remotecontrol:{sessionId}` WS input relay, pause, global panic hotkey, fail-closed teardown, and server-side audit.
+- **FR-005** — While a participant is sharing a screen in the call, a **Give Control** affordance is shown to that **sharer (the host)**; it flips to **Revoke Control** while control is granted. The sharer's click **is the consent act** (host-initiated), so the peer is offered control directly rather than the peer requesting it.
+- **FR-005a** — Host-initiated giving is delivered by **one new route** `POST /api/dm/:conversationId/control/offer` that reuses spec 088's session service: it creates a session with the caller as **host** and the peer as **controller**, already host-consented (status `agent_pending`), mints the single-use token, and notifies the peer (WS) to enter the controller surface. This is the **only** server addition; all other spec 088 routes/relay/audit are reused unchanged.
+- **FR-006** — Once offered, control reuses spec 088 **unchanged**: single-use token, `remotecontrol:{sessionId}` WS input relay, pause, global panic hotkey, fail-closed teardown, and server-side audit. (The only bypass is the controller-request → host-allow handshake, replaced by the host-initiated offer per FR-005/FR-005a.)
 - **FR-007** — The controller drives the **call's already-shared screen track** — normalized `[0,1]` pointer/keyboard captured over the call's shared-screen video — with **no second share and no separate `rc-<sessionId>` LiveKit room**.
 - **FR-008** — Stopping the screen share, dropping the call, revoke, or panic **ends control** and invalidates the token (fail-closed), never leaving standing access.
 
@@ -132,7 +133,9 @@ The full desktop client per `apps/desktop/stack.md` (this ships a **minimal runn
 
 ## API Routes
 
-- **No new server routes.** Screen share is client-side LiveKit on the existing `dm-call-<id>` room and its spec 087 token route. Give-control reuses spec 088's `/api/dm/:conversationId/control/{request,allow,decline,stop,sessions}` + `/:sessionId` status; browser fallback reuses `/api/agent/download`.
+- **One new route:** `POST /api/dm/:conversationId/control/offer` — host-initiated give-control (FR-005a). Caller = host, peer = controller; creates an already-host-consented session (`agent_pending`), mints the single-use token, returns the token + agent download URL, and emits `remotecontrol.updated` so the peer enters the controller surface. Reuses spec 088's `remotecontrol/service.ts` session/token logic.
+- **Reused unchanged (spec 088):** `/api/dm/:conversationId/control/{stop,sessions}` + `/:sessionId` status; browser fallback reuses `/api/agent/download`. (`request`/`allow`/`decline` remain for the DM-header flow but are bypassed by the in-call offer.)
+- Screen share is client-side LiveKit on the existing `dm-call-<id>` room and its spec 087 token route — no route.
 - The Electron main process authenticates to the **existing** agent WS handshake (`?controltoken=…`) — **no server change**.
 
 ## Frontend Components
@@ -150,7 +153,7 @@ The full desktop client per `apps/desktop/stack.md` (this ships a **minimal runn
 3. Giving control enforces spec 088's consent, kill switch, panic, and audit unchanged; revoke/panic cuts input within ~1s without ending the share or call. — *FR-006, FR-008*
 4. On the **desktop app**, giving control injects in-process with **no download**; in a **browser**, it falls back to the agent download — same control experience. — *FR-009, FR-010, FR-011*
 5. The Electron shell runs the web UI from the deployed URL and injects input via the shared `injection-core`, with the standalone agent still working from the same module. — *FR-012, FR-013, FR-014*
-6. No new tables, migrations, or server routes are introduced; the desktop shell defers SQLite/auto-update/installers. — *Data/API sections, FR-015*
+6. No new tables or migrations; exactly **one** new server route (host-initiated `/control/offer`), reusing spec 088's session/token service; the desktop shell defers SQLite/auto-update/installers. — *Data/API sections, FR-005a, FR-015*
 
 ## Key Entities
 
@@ -166,7 +169,7 @@ The full desktop client per `apps/desktop/stack.md` (this ships a **minimal runn
 - Screen-share **track kind** must be distinguished on the receive side so screen renders full-frame and camera stays PiP.
 - v1 uses the **native** screen picker; no custom thumbnail UI.
 - Electron shell is **minimal** — loads the deployed URL, no offline store / auto-update / signed installer in this scope.
-- Reuses spec 088 tokens/consent/relay and spec 087 call rooms with **no server or schema changes**; the Electron main reuses the existing agent WS handshake.
+- Reuses spec 088 tokens/consent/relay and spec 087 call rooms with **no schema changes and exactly one new route** (host-initiated `/control/offer`); the Electron main reuses the existing agent WS handshake.
 - Runs over the `yappchat` Postgres schema, Drizzle, Next.js 16 App Router; the desktop app joins the pnpm workspace.
 
 ## Notes
@@ -177,7 +180,7 @@ The full desktop client per `apps/desktop/stack.md` (this ships a **minimal runn
 
 ## Open Questions
 
-- **Consent role in a call**: spec 088 casts the *host* (screen owner) as the one who consents to be controlled. In a call the sharer is the host; confirm the give-control button lives with the sharer and the consent prompt is a self-confirm ("allow {peer} to control") vs. spec 088's request-then-allow ordering. (Lean: sharer clicks Give Control = the consent act; peer just starts driving.)
+- **Consent role in a call**: RESOLVED (2026-07-18) — the give-control button lives with the **sharer/host**; their click **is** the consent act (host-initiated), delivered by the new `/control/offer` route (FR-005a). Spec 088's controller-request → host-allow handshake is bypassed in-call; the peer is offered control and starts driving.
 - **Desktop detection timing**: how early can the renderer read `window.yappchatDesktop` (preload timing) to choose the injection path before the grant. (Lean: available at load via contextBridge.)
 - **Deployed URL for the shell**: which URL the Electron window loads by default (staging vs prod) and how dev points at `localhost:5175`. (Lean: env-configurable, default prod.)
 - **Switch-screen UX**: whether "Switch" is a distinct button or re-clicking Share Screen re-opens the picker. (Lean: explicit Switch control while sharing.)
@@ -189,4 +192,4 @@ The full desktop client per `apps/desktop/stack.md` (this ships a **minimal runn
 3. **Environment-aware injection, one server path** — Electron main injects in-process; browser falls back to the spec 088 agent; **both** use the identical agent WS handshake and session/token/relay, so the server is unchanged. Rejected: an IPC-forwarded input path unique to Electron (more coupling, divergent server behavior).
 4. **Shared `injection-core`** — extract nut.js + WS loop from `apps/agent` so the standalone agent and Electron main share one implementation. Rejected: duplicating injection logic in the desktop app.
 5. **Minimal Electron shell** — load the deployed web UI; defer SQLite/auto-update/installers. Rejected: building the full `stack.md` client now (multi-week, unrelated to the control feature).
-6. **No new schema/routes** — this is a wiring + shell scope; all persistence, consent, tokens, and audit come from specs 087/088. Rejected: a call-specific control session model.
+6. **Host-initiated offer via one new route** — the sharer's "Give Control" click is the consent act (the call is the trust context), delivered by `POST /control/offer` reusing spec 088's session/token service; the peer is offered control rather than requesting it. Rejected: (a) forcing the peer to "Request control" first (contradicts the user's sharer-side button); (b) a WS-only offer that auto-fires `request`+`allow` (convoluted, two round-trips). No new schema; all persistence, consent, tokens, and audit come from specs 087/088.
