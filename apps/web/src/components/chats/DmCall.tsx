@@ -32,6 +32,8 @@ export function DmCall({
   const screenSelfRef = useRef<HTMLVideoElement | null>(null);
   const [peerSharing, setPeerSharing] = useState(false);
   const remoteCamRef = useRef<HTMLVideoElement | null>(null);
+  const peerCamTrackRef = useRef<RemoteTrack | null>(null);
+  const [peerCamSeq, setPeerCamSeq] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -52,15 +54,21 @@ export function DmCall({
           if (remoteRef.current) track.attach(remoteRef.current); // screen → main frame
           setPeerSharing(true);
         } else if (kind === "camera") {
-          // Peer camera: PiP if a screen is main, else main frame.
-          const el = peerSharing ? remoteCamRef.current : remoteRef.current;
-          if (el) track.attach(el);
+          // Record the track; a separate effect (keyed on peerSharing + peerCamSeq)
+          // decides whether it belongs in the main frame or the PiP. Reading
+          // peerSharing here would close over a stale value (subscribe fires once).
+          peerCamTrackRef.current = track;
+          setPeerCamSeq((n) => n + 1);
         }
       });
       room.on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack) => {
-        if (classifyCallTrack(String(track.source), String(track.kind)) === "screen") {
+        const kind = classifyCallTrack(String(track.source), String(track.kind));
+        if (kind === "screen") {
           track.detach();
           setPeerSharing(false);
+        } else if (kind === "camera" && peerCamTrackRef.current === track) {
+          track.detach();
+          peerCamTrackRef.current = null;
         }
       });
       room.on(RoomEvent.ParticipantConnected, () => setPeerHere(true));
@@ -93,10 +101,18 @@ export function DmCall({
       cancelled = true;
       void room?.disconnect();
     };
-    // peerSharing is read inside the TrackSubscribed handler via closure; adding it here
-    // would tear down and reconnect the LiveKit room on every screen-share toggle.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId, onEnd]);
+
+  // Moves the peer's camera track between the main frame and the PiP whenever
+  // sharing starts/stops or a new camera track arrives (e.g. peer re-enables
+  // camera mid-share). Runs independently of the connect effect above so the
+  // room is never torn down on a share toggle.
+  useEffect(() => {
+    const t = peerCamTrackRef.current;
+    if (!t) return;
+    const el = peerSharing ? remoteCamRef.current : remoteRef.current;
+    if (el) t.attach(el);
+  }, [peerSharing, peerCamSeq]);
 
   const toggleMute = useCallback(async () => {
     const room = roomRef.current;
