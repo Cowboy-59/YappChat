@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Room, RoomEvent, Track, type RemoteTrack } from "livekit-client";
+import { classifyCallTrack } from "@/lib/call/tracks";
 
 /**
  * Spec 087 (1:1 call slice) — the in-call overlay for a two-party DM audio/video
@@ -29,6 +30,8 @@ export function DmCall({
   const [camOff, setCamOff] = useState(false);
   const [sharing, setSharing] = useState(false);
   const screenSelfRef = useRef<HTMLVideoElement | null>(null);
+  const [peerSharing, setPeerSharing] = useState(false);
+  const remoteCamRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,8 +46,22 @@ export function DmCall({
       room = new Room();
       roomRef.current = room;
       room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack) => {
-        if (track.kind === Track.Kind.Video && remoteRef.current) track.attach(remoteRef.current);
-        if (track.kind === Track.Kind.Audio) track.attach();
+        const kind = classifyCallTrack(String(track.source), String(track.kind));
+        if (kind === "audio") return void track.attach();
+        if (kind === "screen") {
+          if (remoteRef.current) track.attach(remoteRef.current); // screen → main frame
+          setPeerSharing(true);
+        } else if (kind === "camera") {
+          // Peer camera: PiP if a screen is main, else main frame.
+          const el = peerSharing ? remoteCamRef.current : remoteRef.current;
+          if (el) track.attach(el);
+        }
+      });
+      room.on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack) => {
+        if (classifyCallTrack(String(track.source), String(track.kind)) === "screen") {
+          track.detach();
+          setPeerSharing(false);
+        }
       });
       room.on(RoomEvent.ParticipantConnected, () => setPeerHere(true));
       room.on(RoomEvent.ParticipantDisconnected, () => {
@@ -76,6 +93,9 @@ export function DmCall({
       cancelled = true;
       void room?.disconnect();
     };
+    // peerSharing is read inside the TrackSubscribed handler via closure; adding it here
+    // would tear down and reconnect the LiveKit room on every screen-share toggle.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId, onEnd]);
 
   const toggleMute = useCallback(async () => {
@@ -151,6 +171,14 @@ export function DmCall({
           playsInline
           muted
         />
+        {peerSharing && (
+          <video
+            ref={remoteCamRef}
+            className="absolute bottom-4 left-4 h-32 w-44 rounded-xl border border-white/20 bg-black object-cover shadow-lg"
+            autoPlay
+            playsInline
+          />
+        )}
       </div>
       <div className="flex items-center justify-center gap-4 py-4">
         <button
