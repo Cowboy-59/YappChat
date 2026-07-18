@@ -193,13 +193,13 @@ export function DmCall({
     setCtrlDownloadUrl(data.downloadUrl); // browser path: host runs the agent (Task 12 skips this on desktop)
   }, [conversationId]);
 
-  const revokeControl = useCallback(async () => {
+  const revokeControl = useCallback(async (panic = false) => {
     if (!ctrl089) return;
     await fetch(`/api/dm/${conversationId}/control/${ctrl089.sessionId}/stop`, {
       method: "POST",
       credentials: "include",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ panic: false }),
+      body: JSON.stringify({ panic }),
     }).catch(() => {});
     setCtrl089(null);
     setCtrlDownloadUrl(null);
@@ -211,12 +211,47 @@ export function DmCall({
     let last = 0;
     const onKey = (ev: KeyboardEvent) => {
       if (ev.key !== "Escape") return;
-      if (ev.timeStamp - last < 500) void revokeControl();
+      if (ev.timeStamp - last < 500) void revokeControl(true);
       last = ev.timeStamp;
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [ctrl089, revokeControl]);
+
+  // FR-008 — stopping the share while hosting an active control session must
+  // end control (the controller can no longer see the screen). ctrl089 is
+  // null before any session exists, so this is a no-op on mount/pre-session.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fail-closed control teardown on share-stop (FR-008)
+    if (!sharing && ctrl089 && ctrlRole === "host") void revokeControl();
+  }, [sharing, ctrl089, ctrlRole, revokeControl]);
+
+  // FR-008 — dropping the call (unmount) while hosting an active control
+  // session must tell the injector to stop, even on the desktop/agent path
+  // where the browser tab isn't what's driving input. The ref always holds
+  // the latest active-host session id so the unmount cleanup (which only
+  // re-registers on conversationId change) never reads a stale value.
+  const activeHostSessionRef = useRef<string | null>(null);
+  useEffect(() => {
+    activeHostSessionRef.current =
+      ctrl089 && ctrlRole === "host" && (ctrl089.status === "granted" || ctrl089.status === "paused" || ctrl089.status === "agent_pending")
+        ? ctrl089.sessionId
+        : null;
+  }, [ctrl089, ctrlRole]);
+  useEffect(() => {
+    return () => {
+      const sid = activeHostSessionRef.current;
+      if (sid) {
+        void fetch(`/api/dm/${conversationId}/control/${sid}/stop`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ panic: false }),
+          keepalive: true,
+        }).catch(() => {});
+      }
+    };
+  }, [conversationId]);
 
   const connected = status.toLowerCase() === "connected";
   const ctrl =
@@ -308,7 +343,7 @@ export function DmCall({
                 🕹️
               </button>
             ) : ctrlRole === "host" ? (
-              <button type="button" onClick={revokeControl} title="Revoke control" className={`${ctrl} bg-red-600 text-white`}>
+              <button type="button" onClick={() => revokeControl()} title="Revoke control" className={`${ctrl} bg-red-600 text-white`}>
                 ⛔
               </button>
             ) : null}
