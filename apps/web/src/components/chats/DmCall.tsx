@@ -27,6 +27,8 @@ export function DmCall({
   const [peerHere, setPeerHere] = useState(false);
   const [muted, setMuted] = useState(false);
   const [camOff, setCamOff] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const screenSelfRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -92,6 +94,34 @@ export function DmCall({
     await room.localParticipant.setCameraEnabled(!next).catch(() => {});
   }, [camOff]);
 
+  const startShare = useCallback(async () => {
+    const room = roomRef.current;
+    if (!room) return;
+    try {
+      await room.localParticipant.setScreenShareEnabled(true);
+      setSharing(true);
+      const pub = room.localParticipant.getTrackPublication(Track.Source.ScreenShare);
+      if (pub?.track && screenSelfRef.current) pub.track.attach(screenSelfRef.current);
+    } catch {
+      /* user cancelled the OS picker — no-op */
+      setSharing(false);
+    }
+  }, []);
+
+  const stopShare = useCallback(async () => {
+    const room = roomRef.current;
+    if (!room) return;
+    setSharing(false);
+    await room.localParticipant.setScreenShareEnabled(false).catch(() => {});
+  }, []);
+
+  const switchShare = useCallback(async () => {
+    const room = roomRef.current;
+    if (!room) return;
+    await room.localParticipant.setScreenShareEnabled(false).catch(() => {});
+    await startShare();
+  }, [startShare]);
+
   const connected = status.toLowerCase() === "connected";
   const ctrl =
     "flex h-12 w-12 items-center justify-center rounded-full text-xl shadow hover:opacity-90";
@@ -139,6 +169,35 @@ export function DmCall({
         >
           {camOff ? "📷" : "🎥"}
         </button>
+        {!sharing ? (
+          <button
+            type="button"
+            onClick={startShare}
+            title="Share your screen"
+            className={`${ctrl} bg-white text-neutral-900`}
+          >
+            🖥️
+          </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={switchShare}
+              title="Switch shared screen"
+              className={`${ctrl} bg-white/20 text-white`}
+            >
+              🔀
+            </button>
+            <button
+              type="button"
+              onClick={stopShare}
+              title="Stop sharing"
+              className={`${ctrl} bg-white/20 text-white`}
+            >
+              🛑
+            </button>
+          </>
+        )}
         <button type="button" onClick={onEnd} title="Hang up" className={`${ctrl} bg-red-600 text-white`}>
           📞
         </button>
