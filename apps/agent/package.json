@@ -9,6 +9,7 @@
   },
   "scripts": {
     "start": "node src/agent.mjs",
+    "test": "vitest run",
     "package": "pkg . --targets node18-win-x64 --output dist/yappchat-agent.exe"
   },
   "dependencies": {
@@ -17,5 +18,8 @@
   },
   "optionalDependencies": {
     "uiohook-napi": "^1.5.4"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.10"
   }
 }

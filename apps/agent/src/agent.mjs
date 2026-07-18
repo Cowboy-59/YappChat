@@ -20,7 +20,8 @@
 
 import { createRequire } from "node:module";
 import WebSocket from "ws";
-import { Button, Key, Point, keyboard, mouse, screen } from "@nut-tree-fork/nut-js";
+import { screen } from "@nut-tree-fork/nut-js";
+import { createInjector } from "./injection-core.mjs";
 
 // For the optional native dep (uiohook-napi), loaded via require() in ESM.
 const require = createRequire(import.meta.url);
@@ -43,85 +44,11 @@ function die(msg, code = 1) {
 }
 if (!TOKEN) die("No control token. Pass --token=<TOKEN> (from the YappChat 'Allow control' prompt).");
 
-mouse.config.autoDelayMs = 0;
-keyboard.config.autoDelayMs = 0;
-
 let screenW = 1920;
 let screenH = 1080;
-let lastInjectAt = 0;
-let paused = false;
 
-// ── key mapping (browser KeyboardEvent.key → nut Key) ─────────────────────────
-const KEY = {
-  Enter: Key.Enter,
-  Backspace: Key.Backspace,
-  Tab: Key.Tab,
-  Escape: Key.Escape,
-  " ": Key.Space,
-  ArrowUp: Key.Up,
-  ArrowDown: Key.Down,
-  ArrowLeft: Key.Left,
-  ArrowRight: Key.Right,
-  Delete: Key.Delete,
-  Home: Key.Home,
-  End: Key.End,
-  PageUp: Key.PageUp,
-  PageDown: Key.PageDown,
-  Shift: Key.LeftShift,
-  Control: Key.LeftControl,
-  Alt: Key.LeftAlt,
-  Meta: Key.LeftSuper,
-  CapsLock: Key.CapsLock,
-  Insert: Key.Insert,
-};
-for (let i = 1; i <= 12; i++) KEY[`F${i}`] = Key[`F${i}`];
-
-const btn = (b) => (b === "right" ? Button.RIGHT : b === "middle" ? Button.MIDDLE : Button.LEFT);
-
-// ── injection ─────────────────────────────────────────────────────────────────
-async function inject(input) {
-  if (paused) return;
-  lastInjectAt = Date.now();
-  try {
-    switch (input.t) {
-      case "move":
-        await mouse.setPosition(new Point(Math.round(input.x * screenW), Math.round(input.y * screenH)));
-        break;
-      case "down":
-        await mouse.setPosition(new Point(Math.round(input.x * screenW), Math.round(input.y * screenH)));
-        await mouse.pressButton(btn(input.button));
-        break;
-      case "up":
-        await mouse.releaseButton(btn(input.button));
-        break;
-      case "scroll":
-        if (input.dy < 0) await mouse.scrollUp(Math.max(1, Math.round(-input.dy / 40)));
-        else if (input.dy > 0) await mouse.scrollDown(Math.max(1, Math.round(input.dy / 40)));
-        if (input.dx < 0) await mouse.scrollLeft(Math.max(1, Math.round(-input.dx / 40)));
-        else if (input.dx > 0) await mouse.scrollRight(Math.max(1, Math.round(input.dx / 40)));
-        break;
-      case "key": {
-        const mapped = KEY[input.key];
-        if (mapped !== undefined) {
-          if (input.down) await keyboard.pressKey(mapped);
-          else await keyboard.releaseKey(mapped);
-        } else if (input.down && input.key.length === 1) {
-          // Printable char: type on key-down (modifiers held via mapped keys make
-          // shortcuts like Ctrl+C work). Key-up for printables is a no-op.
-          await keyboard.type(input.key);
-        }
-        break;
-      }
-      case "text":
-        await keyboard.type(input.text);
-        break;
-      default:
-        break;
-    }
-  } catch (err) {
-    log("inject error:", err?.message ?? String(err));
-  }
-}
+// ── injection (shared with the future Electron main process — spec 089) ───────
+const injector = createInjector({ getScreen: () => ({ w: screenW, h: screenH }) });
 
 // ── connection ────────────────────────────────────────────────────────────────
 const url = `${WS_URL}/?controltoken=${encodeURIComponent(TOKEN)}`;
@@ -147,11 +74,11 @@ ws.on("message", (raw) => {
     return;
   }
   if (msg.type === "control_input") {
-    void inject(msg.input);
+    void injector.inject(msg.input);
   } else if (msg.type === "event" && msg.event?.type === "remotecontrol.updated") {
     const status = msg.event.payload?.status;
-    if (status === "paused") paused = true;
-    else if (status === "granted") paused = false;
+    if (status === "paused") injector.setPaused(true);
+    else if (status === "granted") injector.setPaused(false);
     else if (status === "ended") die("session ended — exiting.", 0);
   } else if (msg.type === "error") {
     die(`server rejected the agent: ${msg.error}`, 1);
@@ -192,8 +119,8 @@ function startGlobalHooks() {
   });
   const autoPause = () => {
     // Ignore events we just caused by injecting.
-    if (Date.now() - lastInjectAt < 250) return;
-    if (!paused) {
+    if (Date.now() - injector.lastInjectAt() < 250) return;
+    if (!injector.isPaused()) {
       sendPause();
     }
     if (resumeTimer) clearTimeout(resumeTimer);
