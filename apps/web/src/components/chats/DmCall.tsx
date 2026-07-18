@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Room, RoomEvent, Track, type RemoteTrack } from "livekit-client";
 import { classifyCallTrack } from "@/lib/call/tracks";
+import { useWSEvent } from "@/components/ws/WSProvider";
+import { WSEventType, type WSEvent } from "@/lib/ws/events";
+import { roleOf } from "@/lib/remotecontrol/role";
+import { ControlInputSurface } from "@/components/chats/ControlInputSurface";
 
 /**
  * Spec 087 (1:1 call slice) — the in-call overlay for a two-party DM audio/video
@@ -15,6 +19,7 @@ export function DmCall({
   peerName,
   role,
   onEnd,
+  currentUserId,
 }: {
   conversationId: string;
   peerName: string;
@@ -35,6 +40,27 @@ export function DmCall({
   const remoteCamRef = useRef<HTMLVideoElement | null>(null);
   const peerCamTrackRef = useRef<RemoteTrack | null>(null);
   const [peerCamSeq, setPeerCamSeq] = useState(0);
+
+  type CtrlSession = { sessionId: string; status: string; dmconversationid: string; controlleruserid: string; hostuserid: string };
+  const [ctrl089, setCtrl089] = useState<CtrlSession | null>(null);
+  const [ctrlDownloadUrl, setCtrlDownloadUrl] = useState<string | null>(null);
+
+  const onCtrlUpdate = useCallback(
+    (e: WSEvent) => {
+      const p = e.payload as CtrlSession;
+      if (!p || p.dmconversationid !== conversationId) return;
+      if (p.status === "ended") {
+        setCtrl089(null);
+        setCtrlDownloadUrl(null);
+      } else {
+        setCtrl089(p);
+      }
+    },
+    [conversationId],
+  );
+  useWSEvent(WSEventType.RemoteControlUpdated, onCtrlUpdate);
+
+  const ctrlRole = roleOf(ctrl089, currentUserId);
 
   useEffect(() => {
     let cancelled = false;
@@ -159,6 +185,39 @@ export function DmCall({
     await startShare();
   }, [startShare]);
 
+  const giveControl = useCallback(async () => {
+    const r = await fetch(`/api/dm/${conversationId}/control/offer`, { method: "POST", credentials: "include" });
+    if (!r.ok) return;
+    const data = (await r.json()) as { session: CtrlSession; downloadUrl: string };
+    setCtrl089(data.session);
+    setCtrlDownloadUrl(data.downloadUrl); // browser path: host runs the agent (Task 12 skips this on desktop)
+  }, [conversationId]);
+
+  const revokeControl = useCallback(async () => {
+    if (!ctrl089) return;
+    await fetch(`/api/dm/${conversationId}/control/${ctrl089.sessionId}/stop`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ panic: false }),
+    }).catch(() => {});
+    setCtrl089(null);
+    setCtrlDownloadUrl(null);
+  }, [conversationId, ctrl089]);
+
+  // FR-010 — panic hotkey (double-Escape) instantly ends control while live.
+  useEffect(() => {
+    if (!ctrl089 || (ctrl089.status !== "granted" && ctrl089.status !== "paused")) return;
+    let last = 0;
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key !== "Escape") return;
+      if (ev.timeStamp - last < 500) void revokeControl();
+      last = ev.timeStamp;
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [ctrl089, revokeControl]);
+
   const connected = status.toLowerCase() === "connected";
   const ctrl =
     "flex h-12 w-12 items-center justify-center rounded-full text-xl shadow hover:opacity-90";
@@ -195,6 +254,9 @@ export function DmCall({
             autoPlay
             playsInline
           />
+        )}
+        {ctrlRole === "controller" && peerSharing && (ctrl089?.status === "granted" || ctrl089?.status === "paused") && (
+          <ControlInputSurface sessionId={ctrl089.sessionId} active={ctrl089.status === "granted"} />
         )}
       </div>
       <div className="flex items-center justify-center gap-4 py-4">
@@ -241,12 +303,34 @@ export function DmCall({
             >
               🛑
             </button>
+            {!ctrl089 ? (
+              <button type="button" onClick={giveControl} title="Give control of your screen" className={`${ctrl} bg-white text-neutral-900`}>
+                🕹️
+              </button>
+            ) : ctrlRole === "host" ? (
+              <button type="button" onClick={revokeControl} title="Revoke control" className={`${ctrl} bg-red-600 text-white`}>
+                ⛔
+              </button>
+            ) : null}
           </>
         )}
         <button type="button" onClick={onEnd} title="Hang up" className={`${ctrl} bg-red-600 text-white`}>
           📞
         </button>
       </div>
+      {ctrlRole === "host" && ctrlDownloadUrl && ctrl089?.status === "agent_pending" && (
+        <div className="flex items-center justify-center gap-2 pb-3 text-xs text-white">
+          <span>Run the helper to grant control:</span>
+          <a className="rounded-lg bg-white px-2.5 py-1 font-semibold text-neutral-900" href={ctrlDownloadUrl} target="_blank" rel="noopener noreferrer">
+            Download helper
+          </a>
+        </div>
+      )}
+      {ctrlRole === "host" && (ctrl089?.status === "granted" || ctrl089?.status === "paused") && (
+        <div className="pointer-events-none absolute left-1/2 top-10 -translate-x-1/2 rounded-lg bg-red-600/90 px-3 py-1 text-xs font-semibold text-white">
+          🔴 {peerName} is controlling your screen — press Esc twice or ⛔ to stop
+        </div>
+      )}
       {!connected && status !== "no_media" && (
         <span className="pointer-events-none absolute left-1/2 top-2 -translate-x-1/2 text-[11px] text-white/50">
           {status}
