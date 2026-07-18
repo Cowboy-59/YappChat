@@ -140,5 +140,3 @@ function startGlobalHooks() {
 }
 
 process.on("SIGINT", () => die("interrupted — exiting.", 0));
-
-process.on("SIGINT", () => die("interrupted — exiting.", 0));

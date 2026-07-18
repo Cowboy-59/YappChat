@@ -41,6 +41,10 @@ export function DmCall({
   const remoteCamRef = useRef<HTMLVideoElement | null>(null);
   const peerCamTrackRef = useRef<RemoteTrack | null>(null);
   const [peerCamSeq, setPeerCamSeq] = useState(0);
+  // FR-008 — set while switchShare's disable→re-enable round-trip is in
+  // flight so the transient `sharing=false` it produces doesn't trip the
+  // control-teardown effect below (a switch should not end control).
+  const switchingRef = useRef(false);
 
   type CtrlSession = { sessionId: string; status: string; dmconversationid: string; controlleruserid: string; hostuserid: string };
   const [ctrl089, setCtrl089] = useState<CtrlSession | null>(null);
@@ -185,15 +189,20 @@ export function DmCall({
   const switchShare = useCallback(async () => {
     const room = roomRef.current;
     if (!room) return;
-    await room.localParticipant.setScreenShareEnabled(false).catch(() => {});
-    await startShare();
+    switchingRef.current = true;
+    try {
+      await room.localParticipant.setScreenShareEnabled(false).catch(() => {});
+      await startShare();
+    } finally {
+      switchingRef.current = false;
+    }
   }, [startShare]);
 
   const giveControl = useCallback(async () => {
     const r = await fetch(`/api/dm/${conversationId}/control/offer`, { method: "POST", credentials: "include" });
     if (!r.ok) return;
-    const data = (await r.json()) as { session: CtrlSession; token: string; downloadUrl: string };
-    setCtrl089(data.session);
+    const data = (await r.json()) as { session: { id: string } & Record<string, unknown>; token: string; downloadUrl: string };
+    setCtrl089({ ...(data.session as unknown as CtrlSession), sessionId: data.session.id });
     const bridge = getDesktopBridge();
     if (bridge) {
       bridge.startControl(data.token, process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:3001"); // in-process inject, no download
@@ -232,8 +241,7 @@ export function DmCall({
   // end control (the controller can no longer see the screen). ctrl089 is
   // null before any session exists, so this is a no-op on mount/pre-session.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fail-closed control teardown on share-stop (FR-008)
-    if (!sharing && ctrl089 && ctrlRole === "host") void revokeControl();
+    if (!sharing && ctrl089 && ctrlRole === "host" && !switchingRef.current) void revokeControl();
   }, [sharing, ctrl089, ctrlRole, revokeControl]);
 
   // FR-008 — dropping the call (unmount) while hosting an active control

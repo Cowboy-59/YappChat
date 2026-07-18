@@ -37,7 +37,7 @@ async function startControl(token: string, wsUrl: string) {
       if (s === "paused") injector.setPaused(true);
       else if (s === "granted") injector.setPaused(false);
       else if (s === "ended") stopControl();
-    }
+    } else if (msg.type === "error") stopControl();
   });
   ws.on("close", () => { control = null; });
   ws.on("error", () => { /* fail-closed: closing follows */ });
