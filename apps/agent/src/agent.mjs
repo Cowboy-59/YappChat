@@ -48,7 +48,10 @@ let screenW = 1920;
 let screenH = 1080;
 
 // ── injection (shared with the future Electron main process — spec 089) ───────
-const injector = createInjector({ getScreen: () => ({ w: screenW, h: screenH }) });
+const injector = createInjector({
+  getScreen: () => ({ w: screenW, h: screenH }),
+  onError: (err) => log("inject error:", err?.message ?? String(err)),
+});
 
 // ── connection ────────────────────────────────────────────────────────────────
 const url = `${WS_URL}/?controltoken=${encodeURIComponent(TOKEN)}`;

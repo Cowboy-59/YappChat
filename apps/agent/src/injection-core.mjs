@@ -21,7 +21,7 @@ keyboard.config.autoDelayMs = 0;
  * process. `getScreen()` returns the target display size {w,h}; inject() applies
  * one ControlInput. Pause state gates injection (host-local-input-wins).
  */
-export function createInjector({ getScreen }) {
+export function createInjector({ getScreen, onError }) {
   let paused = false;
   let lastInjectAt = 0;
   async function inject(input) {
@@ -62,8 +62,8 @@ export function createInjector({ getScreen }) {
         default:
           break;
       }
-    } catch {
-      /* swallow — a single bad event must not kill the session */
+    } catch (err) {
+      if (onError) onError(err);
     }
   }
   return {
