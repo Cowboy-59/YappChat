@@ -5,6 +5,7 @@ import { useWSEvent } from "@/components/ws/WSProvider";
 import type { WSEvent } from "@/lib/ws/events";
 import { RemoteControlStage } from "@/components/chats/RemoteControlStage";
 import { RemoteControlHistory } from "@/components/chats/RemoteControlHistory";
+import { roleOf } from "@/lib/remotecontrol/role";
 
 /**
  * Spec 088 — Remote Screen Control UI for a 1:1 DM. Owns the consent + session
@@ -64,11 +65,7 @@ export function RemoteControlPanel({
   );
   useWSEvent("remotecontrol.updated", onUpdate);
 
-  const role: "controller" | "host" | null = session
-    ? session.controlleruserid === currentUserId
-      ? "controller"
-      : "host"
-    : null;
+  const role = roleOf(session, currentUserId);
 
   const post = useCallback(
     (path: string, body?: unknown) =>
