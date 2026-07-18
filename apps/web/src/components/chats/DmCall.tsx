@@ -7,6 +7,7 @@ import { useWSEvent } from "@/components/ws/WSProvider";
 import { WSEventType, type WSEvent } from "@/lib/ws/events";
 import { roleOf } from "@/lib/remotecontrol/role";
 import { ControlInputSurface } from "@/components/chats/ControlInputSurface";
+import { getDesktopBridge } from "@/lib/desktop/env";
 
 /**
  * Spec 087 (1:1 call slice) — the in-call overlay for a two-party DM audio/video
@@ -191,13 +192,19 @@ export function DmCall({
   const giveControl = useCallback(async () => {
     const r = await fetch(`/api/dm/${conversationId}/control/offer`, { method: "POST", credentials: "include" });
     if (!r.ok) return;
-    const data = (await r.json()) as { session: CtrlSession; downloadUrl: string };
+    const data = (await r.json()) as { session: CtrlSession; token: string; downloadUrl: string };
     setCtrl089(data.session);
-    setCtrlDownloadUrl(data.downloadUrl); // browser path: host runs the agent (Task 12 skips this on desktop)
+    const bridge = getDesktopBridge();
+    if (bridge) {
+      bridge.startControl(data.token, process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:3001"); // in-process inject, no download
+    } else {
+      setCtrlDownloadUrl(data.downloadUrl); // browser: host runs the agent
+    }
   }, [conversationId]);
 
   const revokeControl = useCallback(async (panic = false) => {
     if (!ctrl089) return;
+    getDesktopBridge()?.stopControl();
     await fetch(`/api/dm/${conversationId}/control/${ctrl089.sessionId}/stop`, {
       method: "POST",
       credentials: "include",
