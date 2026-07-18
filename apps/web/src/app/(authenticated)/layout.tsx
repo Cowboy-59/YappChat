@@ -28,7 +28,7 @@ export default async function AuthenticatedLayout({ children }: { children: Reac
 
   return (
     <div className="flex h-[100dvh] overflow-hidden">
-      <AppRealtime currentSessionId={sessionId} />
+      <AppRealtime currentSessionId={sessionId} currentUserId={user.id} />
       <IconRail user={user} org={org} orgs={orgs} avatarSrc={avatarSrc} />
       <AppSidebar />
       <div className="flex min-w-0 min-h-0 flex-1 flex-col overflow-y-auto">

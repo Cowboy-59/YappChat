@@ -20,6 +20,7 @@ export function DmCall({
   peerName: string;
   role: "caller" | "callee";
   onEnd: () => void;
+  currentUserId: string;
 }) {
   const localRef = useRef<HTMLVideoElement | null>(null);
   const remoteRef = useRef<HTMLVideoElement | null>(null);

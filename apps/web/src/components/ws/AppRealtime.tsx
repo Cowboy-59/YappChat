@@ -26,12 +26,18 @@ function AuthSignoutListener({ currentSessionId }: { currentSessionId: string | 
   return null;
 }
 
-export function AppRealtime({ currentSessionId = null }: { currentSessionId?: string | null }) {
+export function AppRealtime({
+  currentSessionId = null,
+  currentUserId,
+}: {
+  currentSessionId?: string | null;
+  currentUserId: string;
+}) {
   return (
     <WSProvider>
       <AuthSignoutListener currentSessionId={currentSessionId} />
       <MessageNotifications />
-      <DmCallManager />
+      <DmCallManager currentUserId={currentUserId} />
     </WSProvider>
   );
 }

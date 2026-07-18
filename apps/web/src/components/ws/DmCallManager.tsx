@@ -24,7 +24,7 @@ async function signal(conversationId: string, type: "ring" | "accept" | "decline
   }).catch(() => {});
 }
 
-export function DmCallManager() {
+export function DmCallManager({ currentUserId }: { currentUserId: string }) {
   const [incoming, setIncoming] = useState<Incoming | null>(null);
   const [active, setActive] = useState<Active | null>(null);
   const audioRef = useRef<AudioContext | null>(null);
@@ -143,7 +143,15 @@ export function DmCallManager() {
           </button>
         </div>
       )}
-      {active && <DmCall conversationId={active.conversationId} peerName={active.peerName} role={active.role} onEnd={endCall} />}
+      {active && (
+        <DmCall
+          conversationId={active.conversationId}
+          peerName={active.peerName}
+          role={active.role}
+          onEnd={endCall}
+          currentUserId={currentUserId}
+        />
+      )}
     </>
   );
 }
