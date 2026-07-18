@@ -98,6 +98,9 @@ export function DmCall({
           peerCamTrackRef.current = null;
         }
       });
+      room.on(RoomEvent.LocalTrackUnpublished, (pub) => {
+        if (pub.source === Track.Source.ScreenShare) setSharing(false);
+      });
       room.on(RoomEvent.ParticipantConnected, () => setPeerHere(true));
       room.on(RoomEvent.ParticipantDisconnected, () => {
         setPeerHere(false);
