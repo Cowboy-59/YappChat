@@ -13,6 +13,9 @@
     "@nut-tree-fork/nut-js": "^4.2.0",
     "ws": "^8.21.0"
   },
+  "optionalDependencies": {
+    "uiohook-napi": "^1.5.4"
+  },
   "devDependencies": {
     "@types/node": "^20",
     "@types/ws": "^8",
