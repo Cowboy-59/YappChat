@@ -26,6 +26,14 @@ let control: WebSocket | null = null;
 // degradation as the standalone agent.
 let activeUiohook: any = null;
 let resumeTimer: ReturnType<typeof setTimeout> | null = null;
+// Retained handler refs so stopGlobalHooks() can detach exactly what this
+// session attached. uiohook-napi's uIOhook export is a process-wide
+// singleton EventEmitter (Node module cache) shared across every
+// control:start/control:stop cycle in this long-lived Electron process —
+// unlike the standalone one-shot agent, so listeners MUST be explicitly
+// detached on stop or they accumulate across sessions.
+let activeKeydownHandler: ((e: any) => void) | null = null;
+let activeAutoPauseHandler: (() => void) | null = null;
 
 function startGlobalHooks(ws: WebSocket, injector: any) {
   let uiohook: any = null;
@@ -54,7 +62,7 @@ function startGlobalHooks(ws: WebSocket, injector: any) {
   };
 
   let lastEsc = 0;
-  uiohook.on("keydown", (e: any) => {
+  const keydownHandler = (e: any) => {
     // Esc == keycode 1 in uiohook. Double-press within 500ms = panic.
     if (e.keycode === 1) {
       const now = Date.now();
@@ -65,13 +73,22 @@ function startGlobalHooks(ws: WebSocket, injector: any) {
       lastEsc = now;
     }
     autoPause();
-  });
+  };
+
+  uiohook.on("keydown", keydownHandler);
   uiohook.on("mousemove", autoPause);
   uiohook.on("mousedown", autoPause);
 
+  // Retain the singleton handle + handler refs BEFORE start() so
+  // stopGlobalHooks() always has what it needs to detach these exact
+  // listeners — even if start() throws below and leaves them orphaned on
+  // the singleton with nothing else pointing at them.
+  activeUiohook = uiohook;
+  activeKeydownHandler = keydownHandler;
+  activeAutoPauseHandler = autoPause;
+
   try {
     uiohook.start();
-    activeUiohook = uiohook;
     console.log("[yappchat-desktop] global panic hotkey (double-Esc) + host-input auto-pause active.");
   } catch (err: any) {
     console.log("[yappchat-desktop] could not start global hooks:", err?.message ?? String(err));
@@ -81,8 +98,21 @@ function startGlobalHooks(ws: WebSocket, injector: any) {
 function stopGlobalHooks() {
   if (resumeTimer) { clearTimeout(resumeTimer); resumeTimer = null; }
   if (activeUiohook) {
+    // Detach this session's listeners from the singleton BEFORE stopping
+    // the native thread — .stop() only halts event delivery, it does not
+    // clear JS listeners, so skipping this leaks a stale closure (bound to
+    // this session's now-closed ws / injector) on every future session.
+    try {
+      if (activeKeydownHandler) activeUiohook.off("keydown", activeKeydownHandler);
+      if (activeAutoPauseHandler) {
+        activeUiohook.off("mousemove", activeAutoPauseHandler);
+        activeUiohook.off("mousedown", activeAutoPauseHandler);
+      }
+    } catch { /* ignore */ }
     try { activeUiohook.stop(); } catch { /* ignore */ }
     activeUiohook = null;
+    activeKeydownHandler = null;
+    activeAutoPauseHandler = null;
   }
 }
 
