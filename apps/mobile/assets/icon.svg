@@ -1,0 +1,23 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1024" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6366F1"/>
+      <stop offset="0.55" stop-color="#4F46E5"/>
+      <stop offset="1" stop-color="#22D3EE"/>
+    </linearGradient>
+    <linearGradient id="dot" x1="0" y1="0" x2="0" y2="1" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4F46E5"/>
+      <stop offset="1" stop-color="#7C3AED"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="232" fill="url(#bg)"/>
+  <!-- soft top-left highlight -->
+  <circle cx="300" cy="250" r="360" fill="#FFFFFF" opacity="0.10"/>
+  <!-- speech bubble -->
+  <rect x="236" y="270" width="552" height="392" rx="96" fill="#FFFFFF"/>
+  <path d="M 360 628 L 322 762 L 470 636 Z" fill="#FFFFFF"/>
+  <!-- typing dots -->
+  <circle cx="400" cy="466" r="44" fill="url(#dot)"/>
+  <circle cx="512" cy="466" r="44" fill="url(#dot)"/>
+  <circle cx="624" cy="466" r="44" fill="url(#dot)"/>
+</svg>

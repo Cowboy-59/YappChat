@@ -1,5 +1,6 @@
+import { useEffect } from "react";
 import { StatusBar } from "expo-status-bar";
-import { ActivityIndicator, View } from "react-native";
+import * as SplashScreen from "expo-splash-screen";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
@@ -26,18 +27,20 @@ function HomeTabs() {
   );
 }
 
+// Keep the native splash up until we've resolved the session (no white flash).
+void SplashScreen.preventAutoHideAsync();
+
 function Root() {
   const { user, loading } = useAuth();
   // Poll for new messages and fire local notifications while signed in.
   useNewMessageNotifier(Boolean(user));
 
-  if (loading) {
-    return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
-  }
+  useEffect(() => {
+    if (!loading) void SplashScreen.hideAsync().catch(() => {});
+  }, [loading]);
+
+  // While resolving the session, keep the splash visible (render nothing).
+  if (loading) return null;
 
   return (
     <Stack.Navigator>
