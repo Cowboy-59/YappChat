@@ -16,6 +16,8 @@ export type NormalizedMessage = {
   authorid: string;
   /** Account display name (spec 011), or the email local-part fallback; null if the author isn't a known user. */
   authorname: string | null;
+  /** Spec 091 — true when the author is an AI agent (kind='agent', e.g. "Claude"). */
+  isagent: boolean;
   /** Resolved (presigned) avatar URL for the author; null if none or not a known user. */
   authoravatar: string | null;
   /** Attachments (presigned URL + filename + isImage), stored privately on S3 as keys. */

@@ -35,6 +35,7 @@ function normalize(
   authorname: string | null = null,
   media: Attachment[] = [],
   authoravatar: string | null = null,
+  isagent = false,
 ): NormalizedMessage {
   return {
     id: m.id,
@@ -42,6 +43,7 @@ function normalize(
     conversationid: m.conversationid,
     authorid: m.authorid,
     authorname,
+    isagent,
     authoravatar,
     media,
     content: m.content,
@@ -76,6 +78,14 @@ async function resolveAuthorName(authorid: string): Promise<string | null> {
     .where(eq(users.id, authorid))
     .limit(1);
   return u ? authorLabelFrom(u.displayname, u.email) : null;
+}
+
+/** Spec 091 — whether an author id is an AI agent (kind='agent', e.g. "Claude"). */
+async function isAgentAuthor(authorid: string): Promise<boolean> {
+  const db = getDb();
+  if (!db || !UUID_RE.test(authorid)) return false;
+  const [u] = await db.select({ kind: users.kind }).from(users).where(eq(users.id, authorid)).limit(1);
+  return u?.kind === "agent";
 }
 
 // ── Channels ────────────────────────────────────────────────────────────────
@@ -193,9 +203,10 @@ export async function listMessages(conversationid: string): Promise<NormalizedMe
   const ids = [...new Set(rows.map((r) => r.authorid))].filter((id) => UUID_RE.test(id));
   const labels = new Map<string, string | null>();
   const avatars = new Map<string, string | null>();
+  const agents = new Set<string>();
   if (ids.length) {
     const us = await db
-      .select({ id: users.id, displayname: users.displayname, email: users.email, avatarurl: users.avatarurl })
+      .select({ id: users.id, displayname: users.displayname, email: users.email, avatarurl: users.avatarurl, kind: users.kind })
       .from(users)
       .where(inArray(users.id, ids));
     // Resolve each unique author's avatar once (presign), not per message.
@@ -203,12 +214,19 @@ export async function listMessages(conversationid: string): Promise<NormalizedMe
       us.map(async (u) => {
         labels.set(u.id, authorLabelFrom(u.displayname, u.email));
         avatars.set(u.id, await resolveAvatarUrl(u.avatarurl));
+        if (u.kind === "agent") agents.add(u.id);
       }),
     );
   }
   return Promise.all(
     rows.map(async (m) =>
-      normalize(m, labels.get(m.authorid) ?? null, await presignAttachments(m.mediaurl), avatars.get(m.authorid) ?? null),
+      normalize(
+        m,
+        labels.get(m.authorid) ?? null,
+        await presignAttachments(m.mediaurl),
+        avatars.get(m.authorid) ?? null,
+        agents.has(m.authorid),
+      ),
     ),
   );
 }
@@ -300,7 +318,13 @@ export async function sendMessage(input: {
   await db.update(conversations).set({ lastmessageat: new Date() }).where(eq(conversations.id, conversation.id));
 
   const [row] = await db.select().from(messages).where(eq(messages.id, id)).limit(1);
-  const msg = normalize(row, await resolveAuthorName(row.authorid), await presignAttachments(row.mediaurl));
+  const msg = normalize(
+    row,
+    await resolveAuthorName(row.authorid),
+    await presignAttachments(row.mediaurl),
+    null,
+    await isAgentAuthor(row.authorid),
+  );
   await publishMessageEvent("message.outbound", channel.id, msg, conversation.kind);
   return msg;
 }
