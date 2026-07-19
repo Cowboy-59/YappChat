@@ -181,7 +181,8 @@ const CLAUDE_STRIP = /^\s*🤖\s*claude\b[\s:—-]*/i;
 function Bubble({ message, mine }: { message: Message; mine: boolean }) {
   const isSystem = SYSTEM_AUTHORS.includes(message.authorid);
   const raw = message.content ?? "";
-  const isClaude = isClaudeMessage(raw);
+  // Claude if authored by the agent (spec 091) OR carrying the legacy 🤖 marker.
+  const isClaude = Boolean(message.isagent) || isClaudeMessage(raw);
   const onRight = mine && !isClaude; // your typed messages; Claude's go left
   const body = message.deletedat ? "This message was deleted" : isClaude ? raw.replace(CLAUDE_STRIP, "") : raw;
 

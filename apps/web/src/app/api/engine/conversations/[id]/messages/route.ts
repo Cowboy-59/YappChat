@@ -7,6 +7,7 @@ import {
   listMessages,
   sendMessage,
 } from "@/lib/engine/service";
+import { resolveAgentFromBearer } from "@/lib/auth/agents";
 import { maybeAutoAnswerForConversation } from "@/lib/communities/spaceai-answer";
 
 export const dynamic = "force-dynamic";
@@ -28,16 +29,31 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
 /** POST /api/engine/conversations/:id/messages { content } — send outbound (members only). */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const ctx = await engineContext();
-  if (!ctx.ok) return ctx.response;
   const { id } = await params;
-  // Authorization: only a member may post. (person-DM sends are ADDITIONALLY gated
-  // on an accepted contact inside sendMessage; this membership gate closes posting
-  // to group/space/channel conversations you're not in, and the "contact-of-a-
-  // member injects into a private 1:1" hole.)
-  if (!(await isConversationMember(id, ctx.user.id))) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+
+  // Authorization: only a member may post. An agent (spec 091 — Claude) may post
+  // with its own `yca_…` Bearer token and is authored as itself; otherwise the
+  // caller is the session user. (person-DM sends are ADDITIONALLY gated on an
+  // accepted contact inside sendMessage; this membership gate closes posting to
+  // group/space rooms you're not in.) The `yca_` prefix check keeps normal session
+  // Bearer tokens off the agent-token lookup.
+  const bearer = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
+  const agent = bearer.startsWith("yca_") ? await resolveAgentFromBearer(req) : null;
+  let authorid: string;
+  if (agent) {
+    if (!(await isConversationMember(id, agent.agentid))) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
+    authorid = agent.agentid;
+  } else {
+    const ctx = await engineContext();
+    if (!ctx.ok) return ctx.response;
+    if (!(await isConversationMember(id, ctx.user.id))) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
+    authorid = ctx.user.id;
   }
+
   const body = await readJson<{ content?: string; mediaurl?: string[] }>(req);
   const media = Array.isArray(body?.mediaurl) ? body.mediaurl.filter((m) => typeof m === "string") : [];
   if (!body?.content?.trim() && media.length === 0) {
@@ -46,13 +62,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   try {
     const message = await sendMessage({
       conversationid: id,
-      authorid: ctx.user.id,
+      authorid,
       content: body?.content?.trim() ?? "",
       mediaurl: media,
     });
     // FR-019 — if this conversation is an AI-enabled space, let the support bot
     // answer question-shaped messages (background; never blocks the response).
-    void maybeAutoAnswerForConversation(id, ctx.user.id, message.content).catch(() => {});
+    void maybeAutoAnswerForConversation(id, authorid, message.content).catch(() => {});
     return NextResponse.json({ message }, { status: 201 });
   } catch (err) {
     return engineError(err);

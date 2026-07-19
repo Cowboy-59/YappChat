@@ -89,6 +89,7 @@ export type Message = {
   id: string;
   authorid: string;
   authorname?: string | null;
+  isagent?: boolean;
   content: string | null;
   direction: string;
   createdat?: string;

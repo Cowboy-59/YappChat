@@ -10,7 +10,7 @@ import { EmojiPicker } from "./EmojiPicker";
 import { GifPicker } from "./GifPicker";
 
 type Attachment = { url: string; name: string; isImage: boolean };
-type Message = { id: string; authorid: string; authorname?: string | null; authoravatar?: string | null; content: string | null; direction: string; conversationid?: string; createdat?: string; media?: Attachment[]; deletedat?: string | null };
+type Message = { id: string; authorid: string; authorname?: string | null; authoravatar?: string | null; isagent?: boolean; content: string | null; direction: string; conversationid?: string; createdat?: string; media?: Attachment[]; deletedat?: string | null };
 type UserLite = { id: string; displayname: string; email: string };
 type Contact = UserLite & { conversationid: string | null };
 type Request = { contactid: string; conversationid: string | null; from: UserLite };
@@ -117,6 +117,69 @@ function RoomIdBar({ id }: { id: string }) {
         {copied ? "Copied" : "Copy"}
       </button>
       <span className="hidden shrink-0 text-muted-foreground sm:inline">— give this to Claude to connect</span>
+    </div>
+  );
+}
+
+/**
+ * Spec 091 — mint a one-time agent token so Claude posts to this room AS ITSELF
+ * (author "Claude"), instead of under your account. Paste the token into your
+ * machine's Claude agent (Authorization: Bearer <token>). Shown once.
+ */
+function ClaudeConnectBar({ conversationid }: { conversationid: string }) {
+  const [token, setToken] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const connect = async () => {
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/chats/${conversationid}/agent`, { method: "POST", credentials: "include" });
+      if (r.ok) setToken(((await r.json()) as { token: string }).token);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const copy = async () => {
+    if (!token) return;
+    try {
+      await navigator.clipboard.writeText(token);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard blocked — the token is still selectable */
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-2 border-b border-border bg-muted/30 px-4 py-2 text-xs">
+      <span className="shrink-0 font-semibold text-muted-foreground">Claude token</span>
+      {token ? (
+        <>
+          <code
+            onClick={copy}
+            title="Click to copy"
+            className="min-w-0 flex-1 cursor-pointer truncate rounded bg-background px-2 py-1 font-mono text-foreground"
+          >
+            {token}
+          </code>
+          <button onClick={copy} className="shrink-0 rounded-md border border-border px-2 py-1 font-semibold text-foreground hover:bg-muted">
+            {copied ? "Copied" : "Copy"}
+          </button>
+          <span className="hidden shrink-0 text-muted-foreground sm:inline">— paste into your agent (won&apos;t be shown again)</span>
+        </>
+      ) : (
+        <>
+          <button
+            onClick={connect}
+            disabled={busy}
+            className="shrink-0 rounded-md border border-border px-2 py-1 font-semibold text-foreground hover:bg-muted disabled:opacity-50"
+          >
+            {busy ? "…" : "Connect Claude"}
+          </button>
+          <span className="hidden shrink-0 text-muted-foreground sm:inline">— mint a token so Claude posts here as itself</span>
+        </>
+      )}
     </div>
   );
 }
@@ -560,6 +623,7 @@ function Inner({ autoTranslate, currentUserId }: { autoTranslate: boolean; curre
               )}
             </div>
             {activeSolo && activeConv && <RoomIdBar id={activeConv} />}
+            {activeSolo && activeConv && <ClaudeConnectBar conversationid={activeConv} />}
             <div ref={scrollRef} onScroll={onListScroll} className="min-h-0 flex-1 overflow-y-auto p-4">
               <div className="space-y-3" style={{ zoom }}>
               {messages.map((m, i) => {
@@ -576,10 +640,13 @@ function Inner({ autoTranslate, currentUserId }: { autoTranslate: boolean; curre
                   );
                 }
                 const mine = m.authorid === me;
-                const isClaude = isClaudeMessage(m.content);
-                // Claude (🤖) messages read as incoming (left), named "🤖 Claude".
+                // Spec 091 — a message is Claude's if authored by the agent (isagent)
+                // OR carries the legacy 🤖 marker (older owner-posted messages).
+                const markerClaude = isClaudeMessage(m.content);
+                const isClaude = Boolean(m.isagent) || markerClaude;
                 const onRight = mine && !isClaude;
-                const displayContent = isClaude ? (m.content ?? "").replace(CLAUDE_STRIP, "") : m.content;
+                // Only strip the 🤖 marker (legacy); agent-authored text is left as-is.
+                const displayContent = markerClaude ? (m.content ?? "").replace(CLAUDE_STRIP, "") : m.content;
                 const canDelete = !m.deletedat && (mine || myRole === "admin" || myRole === "owner");
                 return (
                   <Fragment key={m.id}>
@@ -638,7 +705,7 @@ function Inner({ autoTranslate, currentUserId }: { autoTranslate: boolean; curre
                                 <MessageText
                                   messageId={m.id}
                                   content={displayContent ?? m.content}
-                                  translate={autoTranslate && !onRight}
+                                  translate={(autoTranslate || isClaude) && !onRight}
                                 />
                                 <span className="mt-0.5 block text-right text-[10px] opacity-60">{clockTime(m.createdat)}</span>
                               </span>

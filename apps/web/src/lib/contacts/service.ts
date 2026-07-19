@@ -612,14 +612,16 @@ export async function listMyChats(
     .filter((r) => r.kind === "person" || r.kind === "group")
     .sort((a, b) => (b.lastmessageat?.getTime() ?? 0) - (a.lastmessageat?.getTime() ?? 0));
 
-  // Member counts in one batched query → detect a "solo" room (spec 090 project /
-  // remote-management room: a group with only the creator). No N+1.
+  // Human member counts in one batched query → detect a "solo" room (spec 090
+  // project / remote-management room: a group with only the creator). Agent members
+  // (spec 091 — Claude) are excluded so binding Claude doesn't flip a room off solo.
   const memberCount = new Map<string, number>();
   if (chats.length > 0) {
     const counts = await db
       .select({ cid: conversationmembers.conversationid, n: sql<number>`count(*)::int` })
       .from(conversationmembers)
-      .where(inArray(conversationmembers.conversationid, chats.map((c) => c.id)))
+      .innerJoin(users, eq(users.id, conversationmembers.userid))
+      .where(and(inArray(conversationmembers.conversationid, chats.map((c) => c.id)), ne(users.kind, "agent")))
       .groupBy(conversationmembers.conversationid);
     for (const c of counts) memberCount.set(c.cid, c.n);
   }
