@@ -158,6 +158,25 @@ async function loadConversation(id: string): Promise<ConversationRow> {
   return row;
 }
 
+/**
+ * Clear a conversation: hard-delete every message, optionally keeping one
+ * (`exceptMessageId` — e.g. the last incoming/agent message). Members only.
+ * messagedeliveries / messagetranslations cascade-delete with their message.
+ */
+export async function clearConversationMessages(
+  conversationid: string,
+  actorId: string,
+  exceptMessageId?: string,
+): Promise<void> {
+  const db = getDb();
+  if (!db) throw new EngineError("db_unavailable", 503);
+  if (!(await isConversationMember(conversationid, actorId))) throw new EngineError("forbidden", 403);
+  const where = exceptMessageId
+    ? and(eq(messages.conversationid, conversationid), ne(messages.id, exceptMessageId))
+    : eq(messages.conversationid, conversationid);
+  await db.delete(messages).where(where);
+}
+
 export async function listMessages(conversationid: string): Promise<NormalizedMessage[]> {
   const db = getDb();
   if (!db) return [];

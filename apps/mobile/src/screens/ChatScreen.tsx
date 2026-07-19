@@ -1,16 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
-  KeyboardAvoidingView,
-  Platform,
+  Keyboard,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { conversations as convApi, type Message } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
@@ -20,10 +20,30 @@ type Props = NativeStackScreenProps<RootStackParamList, "Chat">;
 
 const POLL_MS = 8000;
 
+/**
+ * Track the on-screen keyboard height (0 when hidden). Deterministic across iOS and
+ * Android edge-to-edge — where KeyboardAvoidingView's behavior/offset is unreliable —
+ * so we can pad the composer up by exactly the keyboard height.
+ */
+function useKeyboardHeight(): number {
+  const [height, setHeight] = useState(0);
+  useEffect(() => {
+    const show = Keyboard.addListener("keyboardDidShow", (e) => setHeight(e.endCoordinates.height));
+    const hide = Keyboard.addListener("keyboardDidHide", () => setHeight(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+  return height;
+}
+
 /** A single conversation: history + a composer. Polls for new messages (v1). */
-export function ChatScreen({ route }: Props) {
+export function ChatScreen({ route, navigation }: Props) {
   const { conversationid } = route.params;
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
+  const keyboardHeight = useKeyboardHeight();
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState("");
@@ -48,6 +68,40 @@ export function ChatScreen({ route }: Props) {
     const t = setInterval(() => void load(), POLL_MS);
     return () => clearInterval(t);
   }, [load]);
+
+  // Keep the latest message visible when the keyboard opens.
+  useEffect(() => {
+    if (keyboardHeight > 0) listRef.current?.scrollToEnd({ animated: true });
+  }, [keyboardHeight]);
+
+  const clearConversation = useCallback(() => {
+    Alert.alert("Clear conversation?", "This permanently removes all messages here. This can't be undone.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Clear",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await convApi.clear(conversationid);
+            setMessages([]);
+          } catch {
+            setError("Couldn't clear the conversation.");
+          }
+        },
+      },
+    ]);
+  }, [conversationid]);
+
+  // "Clear" action in the header.
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <TouchableOpacity onPress={clearConversation} hitSlop={8} style={{ paddingHorizontal: 4 }}>
+          <Text style={{ color: "#1a73e8", fontWeight: "600", fontSize: 15 }}>Clear</Text>
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation, clearConversation]);
 
   const send = async () => {
     const content = text.trim();
@@ -74,58 +128,71 @@ export function ChatScreen({ route }: Props) {
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={["bottom"]}>
-      <KeyboardAvoidingView
+    // Pad the bottom so the composer sits directly above the keyboard. On Android
+    // edge-to-edge the keyboard height excludes the gesture/nav inset, so add it
+    // back when the keyboard is open; when closed, just clear the safe-area inset.
+    <View style={[styles.safe, { paddingBottom: keyboardHeight > 0 ? keyboardHeight + insets.bottom : insets.bottom }]}>
+      <FlatList
+        ref={listRef}
         style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
-      >
-        <FlatList
-          ref={listRef}
-          style={styles.flex}
-          contentContainerStyle={styles.listContent}
-          data={messages}
-          keyExtractor={(m) => m.id}
-          onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
-          renderItem={({ item }) => <Bubble message={item} mine={item.authorid === user?.id} />}
-          ListEmptyComponent={<Text style={styles.empty}>{error ?? "No messages yet — say hello."}</Text>}
+        contentContainerStyle={styles.listContent}
+        data={messages}
+        keyExtractor={(m) => m.id}
+        onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
+        renderItem={({ item }) => <Bubble message={item} mine={item.authorid === user?.id} />}
+        ListEmptyComponent={<Text style={styles.empty}>{error ?? "No messages yet — say hello."}</Text>}
+      />
+      {error && messages.length > 0 ? <Text style={styles.errorBar}>{error}</Text> : null}
+      <View style={styles.composer}>
+        <TextInput
+          style={styles.input}
+          placeholder="Message…"
+          placeholderTextColor="#9aa0a6"
+          value={text}
+          onChangeText={setText}
+          multiline
         />
-        {error && messages.length > 0 ? <Text style={styles.errorBar}>{error}</Text> : null}
-        <View style={styles.composer}>
-          <TextInput
-            style={styles.input}
-            placeholder="Message…"
-            placeholderTextColor="#9aa0a6"
-            value={text}
-            onChangeText={setText}
-            multiline
-          />
-          <TouchableOpacity
-            style={[styles.sendBtn, (!text.trim() || sending) && styles.sendBtnDisabled]}
-            onPress={send}
-            disabled={!text.trim() || sending}
-          >
-            <Text style={styles.sendText}>{sending ? "…" : "Send"}</Text>
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+        <TouchableOpacity
+          style={[styles.sendBtn, (!text.trim() || sending) && styles.sendBtnDisabled]}
+          onPress={send}
+          disabled={!text.trim() || sending}
+        >
+          <Text style={styles.sendText}>{sending ? "…" : "Send"}</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 }
 
 const SYSTEM_AUTHORS = ["yappchat-contact", "yappchat-project", "yappchat-system"];
 
+/**
+ * A message is from Claude/the agent when it carries the robot marker 🤖 AND the
+ * word "claude" (e.g. "🤖 Claude on project wxKanban is connected"). In a project
+ * room these are posted under the room owner's account but should read as INCOMING —
+ * so we render them on the left with a "Claude" label. The text is kept as-is.
+ */
+function isClaudeMessage(content: string): boolean {
+  return content.includes("🤖") && /claude/i.test(content);
+}
+// Strip the leading "🤖 Claude" marker for the body — it's shown as the name instead.
+const CLAUDE_STRIP = /^\s*🤖\s*claude\b[\s:—-]*/i;
+
 function Bubble({ message, mine }: { message: Message; mine: boolean }) {
   const isSystem = SYSTEM_AUTHORS.includes(message.authorid);
-  const body = message.deletedat ? "This message was deleted" : (message.content ?? "");
+  const raw = message.content ?? "";
+  const isClaude = isClaudeMessage(raw);
+  const onRight = mine && !isClaude; // your typed messages; Claude's go left
+  const body = message.deletedat ? "This message was deleted" : isClaude ? raw.replace(CLAUDE_STRIP, "") : raw;
 
   if (isSystem) {
     return <Text style={styles.system}>{body}</Text>;
   }
+  const authorLabel = isClaude ? "🤖 Claude" : message.authorname;
   return (
-    <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs]}>
-      {!mine && message.authorname ? <Text style={styles.author}>{message.authorname}</Text> : null}
-      <Text style={[styles.bubbleText, mine && styles.bubbleTextMine, message.deletedat ? styles.deleted : null]}>
+    <View style={[styles.bubble, onRight ? styles.bubbleMine : styles.bubbleTheirs]}>
+      {!onRight && authorLabel ? <Text style={styles.author}>{authorLabel}</Text> : null}
+      <Text style={[styles.bubbleText, onRight && styles.bubbleTextMine, message.deletedat ? styles.deleted : null]}>
         {body}
       </Text>
     </View>

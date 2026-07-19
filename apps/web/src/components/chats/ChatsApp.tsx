@@ -17,6 +17,17 @@ type Request = { contactid: string; conversationid: string | null; from: UserLit
 type Chat = { conversationid: string; kind: string; name: string; solo?: boolean };
 
 const SYSTEM_AUTHOR = "yappchat-contact";
+/**
+ * A message is from Claude/the agent when it carries the robot marker 🤖 AND the
+ * word "claude" (e.g. "🤖 Claude on project wxKanban is connected"). In a project
+ * room these are posted under the room owner's account but should read as INCOMING —
+ * rendered on the left with a "Claude" avatar. The text is kept as-is.
+ */
+function isClaudeMessage(content: string | null): boolean {
+  return !!content && content.includes("🤖") && /claude/i.test(content);
+}
+// Strip the leading "🤖 Claude" marker for the body — it's shown as the name instead.
+const CLAUDE_STRIP = /^\s*🤖\s*claude\b[\s:—-]*/i;
 
 const btn = "inline-flex min-h-[34px] items-center justify-center rounded-lg px-3 text-sm font-semibold";
 const primary = `${btn} bg-primary text-primary-foreground hover:opacity-90`;
@@ -449,6 +460,16 @@ function Inner({ autoTranslate, currentUserId }: { autoTranslate: boolean; curre
     if (newParam) router.replace(activeConv ? `/chats?conv=${activeConv}` : "/chats");
   }
 
+  async function clearConversation() {
+    if (!activeConv) return;
+    if (!window.confirm("Clear this conversation? This permanently removes all messages here.")) return;
+    const r = await fetch(`/api/engine/conversations/${activeConv}/messages`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    if (r.ok) setMessages([]);
+  }
+
   const acceptedContact = contacts.find((c) => c.conversationid === activeConv);
   const activeChat = chats.find((c) => c.conversationid === activeConv);
   const isGroup = activeChat?.kind === "group";
@@ -506,23 +527,35 @@ function Inner({ autoTranslate, currentUserId }: { autoTranslate: boolean; curre
           <>
             <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 text-sm font-semibold text-foreground">
               <span className="min-w-0 truncate">{activeName || "Chat"}</span>
-              {activeConv && !isGroup && (
+              {activeConv && (
                 <span className="flex items-center gap-1.5">
+                  {!isGroup && (
+                    <>
+                      <button
+                        type="button"
+                        title={`Call ${activeName || "this person"}`}
+                        onClick={() =>
+                          window.dispatchEvent(
+                            new CustomEvent("dm:call-start", {
+                              detail: { conversationId: activeConv, peerName: activeName || "this person" },
+                            }),
+                          )
+                        }
+                        className="inline-flex min-h-[30px] items-center justify-center rounded-lg border border-border px-2.5 text-xs font-semibold hover:bg-muted"
+                      >
+                        📞 Call
+                      </button>
+                      <RemoteControlPanel key={activeConv} conversationId={activeConv} currentUserId={currentUserId} peerName={activeName || "this person"} />
+                    </>
+                  )}
                   <button
                     type="button"
-                    title={`Call ${activeName || "this person"}`}
-                    onClick={() =>
-                      window.dispatchEvent(
-                        new CustomEvent("dm:call-start", {
-                          detail: { conversationId: activeConv, peerName: activeName || "this person" },
-                        }),
-                      )
-                    }
+                    onClick={clearConversation}
+                    title="Clear all messages in this conversation"
                     className="inline-flex min-h-[30px] items-center justify-center rounded-lg border border-border px-2.5 text-xs font-semibold hover:bg-muted"
                   >
-                    📞 Call
+                    Clear
                   </button>
-                  <RemoteControlPanel key={activeConv} conversationId={activeConv} currentUserId={currentUserId} peerName={activeName || "this person"} />
                 </span>
               )}
             </div>
@@ -543,23 +576,27 @@ function Inner({ autoTranslate, currentUserId }: { autoTranslate: boolean; curre
                   );
                 }
                 const mine = m.authorid === me;
+                const isClaude = isClaudeMessage(m.content);
+                // Claude (🤖) messages read as incoming (left), named "🤖 Claude".
+                const onRight = mine && !isClaude;
+                const displayContent = isClaude ? (m.content ?? "").replace(CLAUDE_STRIP, "") : m.content;
                 const canDelete = !m.deletedat && (mine || myRole === "admin" || myRole === "owner");
                 return (
                   <Fragment key={m.id}>
                     {divider}
                     <div
-                      className={`flex items-end gap-2 ${mine ? "justify-end" : "justify-start"}`}
+                      className={`flex items-end gap-2 ${onRight ? "justify-end" : "justify-start"}`}
                       onContextMenu={(e) => {
                         if (!canDelete) return; // fall through to the native menu when not deletable
                         e.preventDefault();
                         setMsgMenu({ id: m.id, x: e.clientX, y: e.clientY });
                       }}
                     >
-                      {!mine && <MsgAvatar url={m.authoravatar} name={m.authorname ?? m.authorid} />}
-                      <div className={`flex min-w-0 max-w-[78%] flex-col ${mine ? "items-end" : "items-start"}`}>
-                        {!mine && (
+                      {!onRight && <MsgAvatar url={isClaude ? null : m.authoravatar} name={isClaude ? "Claude" : (m.authorname ?? m.authorid)} />}
+                      <div className={`flex min-w-0 max-w-[78%] flex-col ${onRight ? "items-end" : "items-start"}`}>
+                        {!onRight && (
                           <span className="mb-0.5 px-1 text-xs font-semibold text-muted-foreground">
-                            {m.authorname ?? `${m.authorid.slice(0, 8)}…`}
+                            {isClaude ? "🤖 Claude" : (m.authorname ?? `${m.authorid.slice(0, 8)}…`)}
                           </span>
                         )}
                         {m.deletedat ? (
@@ -567,7 +604,7 @@ function Inner({ autoTranslate, currentUserId }: { autoTranslate: boolean; curre
                         ) : (
                           <>
                             {m.media && m.media.length > 0 && (
-                              <div className={`mb-1 flex flex-wrap gap-1.5 ${mine ? "justify-end" : "justify-start"}`}>
+                              <div className={`mb-1 flex flex-wrap gap-1.5 ${onRight ? "justify-end" : "justify-start"}`}>
                                 {m.media.map((att) =>
                                   att.isImage ? (
                                     <a key={att.url} href={att.url} target="_blank" rel="noopener noreferrer" title={att.name}>
@@ -596,12 +633,12 @@ function Inner({ autoTranslate, currentUserId }: { autoTranslate: boolean; curre
                             )}
                             {m.content && (
                               <span
-                                className={`inline-block max-w-full whitespace-pre-wrap break-words rounded-2xl px-3 py-1.5 text-sm ${mine ? "bg-green-200 text-slate-950 dark:bg-green-800 dark:text-green-50" : "bg-[color-mix(in_srgb,var(--color-cyan-500),#fff_20%)] text-slate-950"}`}
+                                className={`inline-block max-w-full whitespace-pre-wrap break-words rounded-2xl px-3 py-1.5 text-sm ${onRight ? "bg-green-200 text-slate-950 dark:bg-green-800 dark:text-green-50" : "bg-[color-mix(in_srgb,var(--color-cyan-500),#fff_20%)] text-slate-950"}`}
                               >
                                 <MessageText
                                   messageId={m.id}
-                                  content={m.content}
-                                  translate={autoTranslate && !mine}
+                                  content={displayContent ?? m.content}
+                                  translate={autoTranslate && !onRight}
                                 />
                                 <span className="mt-0.5 block text-right text-[10px] opacity-60">{clockTime(m.createdat)}</span>
                               </span>
