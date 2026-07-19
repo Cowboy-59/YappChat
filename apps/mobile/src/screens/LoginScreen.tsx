@@ -6,7 +6,7 @@ import { ApiError } from "@/api/client";
 
 /** Email + password sign-in. On success, AuthContext flips the app to the tabs. */
 export function LoginScreen() {
-  const { signIn } = useAuth();
+  const { signIn, signInWithProvider } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -24,6 +24,26 @@ export function LoginScreen() {
           ? "Incorrect email or password."
           : "Couldn't sign in. Check your connection and try again.",
       );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sso = async (provider: "google" | "microsoft") => {
+    if (busy) return;
+    setError(null);
+    setBusy(true);
+    try {
+      await signInWithProvider(provider);
+    } catch (err) {
+      const code = err instanceof ApiError ? err.code : "";
+      if (code === "cancelled" || code === "dismissed") {
+        // user backed out — no error message
+      } else if (code === "account_exists") {
+        setError("An account already exists for that email. Sign in with your password, then link the provider.");
+      } else {
+        setError("Couldn't sign in with that provider. Please try again.");
+      }
     } finally {
       setBusy(false);
     }
@@ -71,7 +91,20 @@ export function LoginScreen() {
           {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Sign in</Text>}
         </TouchableOpacity>
 
-        <View style={{ height: 24 }} />
+        <View style={styles.dividerRow}>
+          <View style={styles.divider} />
+          <Text style={styles.dividerText}>or</Text>
+          <View style={styles.divider} />
+        </View>
+
+        <TouchableOpacity style={[styles.ssoButton, busy && styles.buttonDisabled]} onPress={() => sso("google")} disabled={busy}>
+          <Text style={styles.ssoText}>Continue with Google</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.ssoButton, busy && styles.buttonDisabled]} onPress={() => sso("microsoft")} disabled={busy}>
+          <Text style={styles.ssoText}>Continue with Microsoft</Text>
+        </TouchableOpacity>
+
+        <View style={{ height: 20 }} />
         <Text style={styles.hint}>Use your YappChat account (the same one as the web app).</Text>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -103,5 +136,17 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: { opacity: 0.5 },
   buttonText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  dividerRow: { flexDirection: "row", alignItems: "center", marginVertical: 18, gap: 10 },
+  divider: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: "#dadce0" },
+  dividerText: { color: "#9aa0a6", fontSize: 13 },
+  ssoButton: {
+    borderWidth: 1,
+    borderColor: "#dadce0",
+    borderRadius: 12,
+    paddingVertical: 13,
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  ssoText: { color: "#111", fontSize: 15, fontWeight: "600" },
   hint: { color: "#9aa0a6", fontSize: 12, textAlign: "center" },
 });

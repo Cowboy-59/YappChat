@@ -1,4 +1,7 @@
 import Constants from "expo-constants";
+import * as SecureStore from "expo-secure-store";
+import * as WebBrowser from "expo-web-browser";
+import * as Linking from "expo-linking";
 
 /**
  * API base URL for the YappChat backend (the deployed Next.js app). Configured in
@@ -8,15 +11,31 @@ export const API_BASE_URL: string =
   (Constants.expoConfig?.extra?.apiBaseUrl as string | undefined) ?? "https://www.yappchatt.com";
 
 /**
- * Session model (v1): the backend uses an HttpOnly session cookie set by
- * POST /api/auth/login. React Native's networking layer persists cookies per-host,
- * so subsequent requests to the same origin carry the session automatically — no
- * token plumbing in JS. (If we later add a mobile bearer-token endpoint, this is
- * the one place that changes: attach an Authorization header here.)
- *
- * NOTE (open question for the team): confirm cookie persistence is reliable on both
- * iOS and Android in production, or switch to a token endpoint. See README.
+ * Session model: a **bearer token**. `POST /api/auth/mobile/login` (and the mobile
+ * SSO deep-link) return the opaque session token; we persist it in the OS secure
+ * store (Keychain / Keystore) and send it as `Authorization: Bearer <token>` on
+ * every request. The backend accepts that header on all authenticated routes
+ * (see readSessionToken in the web app). No reliance on cookie persistence.
  */
+const TOKEN_KEY = "yc.session.token";
+let sessionToken: string | null = null;
+
+/** Load the persisted token into memory (call once on app start). */
+export async function loadToken(): Promise<string | null> {
+  sessionToken = await SecureStore.getItemAsync(TOKEN_KEY);
+  return sessionToken;
+}
+
+/** Persist (or clear) the session token. */
+export async function setToken(token: string | null): Promise<void> {
+  sessionToken = token;
+  if (token) await SecureStore.setItemAsync(TOKEN_KEY, token);
+  else await SecureStore.deleteItemAsync(TOKEN_KEY);
+}
+
+export function getToken(): string | null {
+  return sessionToken;
+}
 
 export class ApiError extends Error {
   constructor(
@@ -34,10 +53,9 @@ type Json = Record<string, unknown>;
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
-    // `credentials: include` → send/store the session cookie on native.
-    credentials: "include",
     headers: {
       Accept: "application/json",
+      ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
       ...(init?.body ? { "Content-Type": "application/json" } : {}),
       ...(init?.headers ?? {}),
     },
@@ -77,12 +95,48 @@ export type Message = {
   deletedat?: string | null;
 };
 
+export type SsoProvider = "google" | "microsoft";
+
 export const auth = {
-  login: (email: string, password: string) =>
-    api.post<{ user: SessionUser; org: unknown }>("/api/auth/login", { email, password }),
-  me: () => api.get<{ user: SessionUser | null }>("/api/auth/me"),
-  logout: () => api.post<{ ok: boolean }>("/api/auth/logout", {}),
+  /** Email + password → stores the returned bearer token. */
+  login: async (email: string, password: string) => {
+    const r = await api.post<{ user: SessionUser; org: unknown; token: string }>("/api/auth/mobile/login", {
+      email,
+      password,
+    });
+    await setToken(r.token);
+    return r;
+  },
+  me: () => api.get<{ user: SessionUser }>("/api/auth/me"),
+  logout: async () => {
+    try {
+      await api.post<{ ok: boolean }>("/api/auth/logout", {});
+    } finally {
+      await setToken(null);
+    }
+  },
+  /** URL that opens the provider SSO flow for the native app (mode=mobile). */
+  ssoStartUrl: (provider: SsoProvider) => `${API_BASE_URL}/api/auth/sso/${provider}?mode=mobile`,
 };
+
+/**
+ * Run the SSO round-trip in an in-app browser. The backend redirects back to
+ * `yappchat://auth?token=…` (or `?error=…`); we capture that, store the token, and
+ * return. Uses expo-web-browser's auth session so provider cookies stay isolated.
+ */
+export async function signInWithSso(provider: SsoProvider): Promise<{ ok: true } | { ok: false; error: string }> {
+  const redirectUrl = Linking.createURL("auth"); // yappchat://auth (matches the backend deep link)
+  const result = await WebBrowser.openAuthSessionAsync(auth.ssoStartUrl(provider), redirectUrl);
+  if (result.type !== "success" || !result.url) {
+    return { ok: false, error: result.type === "cancel" ? "cancelled" : "dismissed" };
+  }
+  const { queryParams } = Linking.parse(result.url);
+  const token = typeof queryParams?.token === "string" ? queryParams.token : null;
+  const error = typeof queryParams?.error === "string" ? queryParams.error : null;
+  if (error || !token) return { ok: false, error: error ?? "sso_failed" };
+  await setToken(token);
+  return { ok: true };
+}
 
 export const chats = {
   list: () => api.get<{ chats: Chat[]; unread?: Record<string, number> }>("/api/chats"),

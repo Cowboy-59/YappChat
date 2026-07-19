@@ -28,7 +28,7 @@ import {
 import {
   clearAuthCookies,
   readRefreshCookie,
-  readSessionCookie,
+  readSessionToken,
   setAuthCookies,
 } from "./cookies";
 import { anonymizeIp, generateToken, hashPassword, hashToken, verifyPassword } from "./crypto";
@@ -486,11 +486,12 @@ export async function signup(
 
 // ── Login ─────────────────────────────────────────────────────────────────
 
-export async function login(
-  email: string,
-  password: string,
-  ctx: { ip?: string | null },
-): Promise<{ user: SessionUser; org: OrgSummary | null }> {
+/**
+ * Verify email+password and return the user row, or throw 401. Does constant-ish
+ * work whether or not the user exists (same error either way). Shared by the web
+ * and mobile login paths.
+ */
+async function verifyCredentials(email: string, password: string) {
   const db = getDb();
   if (!db) throw new AuthError("db_unavailable", 503);
 
@@ -500,18 +501,43 @@ export async function login(
     .where(eq(users.email, normalizeEmail(email)))
     .limit(1);
 
-  // Constant-ish work whether or not the user exists; same error either way.
   const ok = row?.passwordhash
     ? await verifyPassword(row.passwordhash, password)
     : await verifyPassword(DUMMY_HASH, password);
 
   if (!row || !ok) throw new AuthError("invalid_credentials", 401);
+  return row;
+}
 
+export async function login(
+  email: string,
+  password: string,
+  ctx: { ip?: string | null },
+): Promise<{ user: SessionUser; org: OrgSummary | null }> {
+  const row = await verifyCredentials(email, password);
   await issueSession(row.id);
   await writeAudit({ eventtype: "login", userid: row.id, ip: ctx.ip });
-
   const org = await getActiveOrg(row.id);
   return { user: toSessionUser(row), org };
+}
+
+/**
+ * Mobile sign-in (spec 008). Same as `login()` but ALSO returns the raw opaque
+ * session token so a native client can store it (expo-secure-store) and send it as
+ * `Authorization: Bearer <token>` on every request. The `yc_session` cookie is
+ * still set (harmless for a native app). The token is the same value the cookie
+ * carries — server-side only its hash is ever stored/compared.
+ */
+export async function loginMobile(
+  email: string,
+  password: string,
+  ctx: { ip?: string | null },
+): Promise<{ user: SessionUser; org: OrgSummary | null; token: string }> {
+  const row = await verifyCredentials(email, password);
+  const { sessionToken } = await issueSession(row.id);
+  await writeAudit({ eventtype: "login", userid: row.id, ip: ctx.ip });
+  const org = await getActiveOrg(row.id);
+  return { user: toSessionUser(row), org, token: sessionToken };
 }
 
 // A precomputed argon2id hash so login does equivalent work for unknown emails.
@@ -522,7 +548,9 @@ const DUMMY_HASH =
 
 export async function logout(ctx: { ip?: string | null }): Promise<void> {
   const db = getDb();
-  const token = await readSessionCookie();
+  // Accept the session token from the Bearer header (mobile) or cookie (web) so a
+  // native client can revoke its own session server-side on sign-out.
+  const token = await readSessionToken();
   if (db && token) {
     const [sess] = await db
       .select({ id: sessions.id, userid: sessions.userid })

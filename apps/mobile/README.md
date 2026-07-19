@@ -45,29 +45,35 @@ src/screens/ChatScreen      GET/POST /api/engine/conversations/:id/messages (pol
 src/components/*            small shared UI (list rows, avatar, sign-out)
 ```
 
-## ⚠️ Open questions for the morning (need Andy's call)
+## Auth — bearer token + SSO (implemented)
 
-1. **Auth transport — the big one.** The backend uses an **HttpOnly session cookie**
-   (`POST /api/auth/login` sets it; no token is returned in the body). This app relies on
-   React Native's native cookie jar to carry that cookie on subsequent requests to the same
-   host. That *usually* works but is not guaranteed across iOS/Android/OTA, and cookie
-   attributes (`Secure`, `SameSite`) can bite.
-   **Recommended:** add a small **mobile token endpoint** (e.g. `POST /api/auth/login`
-   returning the session token, or a dedicated `/api/mobile/session`) and store it in
-   `expo-secure-store`, then send `Authorization: Bearer <token>`. This is a ~1-file change
-   in `src/api/client.ts` plus a backend endpoint. **Do we add the token endpoint, or ship
-   cookie-based for v1?**
-2. **SSO logins (Google/Microsoft).** v1 login is email+password only. Do you want SSO in
-   the mobile v1 (needs an in-app browser / `expo-auth-session` redirect flow), or is
-   email+password enough to start?
-3. **EAS account + identifiers.** To build real device binaries we need an Expo/EAS account,
-   Apple Developer + Google Play accounts, and confirmation of the bundle ids
-   (`com.wxperts.yappchat` assumed for both). Who owns these?
-4. **Backend base URL.** Assumed prod `https://www.yappchatt.com`. Correct? Any staging URL
-   you'd rather test against first?
-5. **Realtime.** v1 uses 8-second polling for new messages (simple + reliable). Wiring the
-   WebSocket engine (`ws.wxperts.com`, spec 003) for live delivery is a fast-follow — want it
-   in v1 or next?
+- **Email + password** → `POST /api/auth/mobile/login` returns `{ user, org, token }`. The
+  opaque session **token is stored in `expo-secure-store`** and sent as
+  `Authorization: Bearer <token>` on every request. The backend accepts that header on all
+  authenticated routes (`readSessionToken` in the web app). No cookie reliance.
+- **SSO (Google + Microsoft)** → the app opens `/api/auth/sso/<provider>?mode=mobile` in an
+  in-app auth browser; the backend completes the round-trip and redirects to
+  `yappchat://auth?token=…`, which the app captures and stores. Errors come back as
+  `yappchat://auth?error=…`.
+
+> ⚠️ These use **backend changes that must be deployed to prod** before the mobile app can
+> authenticate: the new `/api/auth/mobile/login` route, `Authorization: Bearer` support in
+> session resolution, and the `mode=mobile` SSO deep-link. They're committed alongside this
+> app but **not yet deployed**.
+
+## ⚠️ Still needs Andy (accounts + confirmations)
+
+1. **EAS account + identifiers (was Q3).** To build real device binaries we need an Expo/EAS
+   account + Apple Developer ($99/yr) + Google Play ($25 one-time), and confirmation of the
+   bundle id `com.wxperts.yappchat` (assumed for both platforms). Who owns these?
+2. **SSO redirect URIs.** For mobile SSO to work with the providers, register the app's
+   deep-link callback with each provider (Google Cloud console / Azure AD). The web callback
+   `{SITE_URL}/api/auth/sso/<provider>/callback` is unchanged (the provider still calls the
+   web); the app never talks to the provider directly, so **no new provider redirect URI is
+   strictly required** — but confirm the existing Google/Microsoft SSO apps are live in prod.
+3. **Deploy the backend auth changes** to prod (see the ⚠️ above) so the app can sign in.
+4. **Realtime (was Q5).** v1 uses 8-second polling. Wiring the WebSocket engine
+   (`ws.wxperts.com`, spec 003) for live delivery is a fast-follow.
 
 ## Status
 

@@ -4,6 +4,7 @@ import { completeCallback, type SsoClaims, type SsoProvider } from "@/lib/auth/s
 import {
   AuthError,
   issueSessionForUser,
+  issueSessionForUserWithToken,
   linkOrProvisionSso,
   linkSsoIdentity,
 } from "@/lib/auth/service";
@@ -15,6 +16,14 @@ import { getSiteUrl } from "@/lib/site";
 export const dynamic = "force-dynamic";
 
 const PROVIDERS = new Set(["google", "microsoft", "oidc"]);
+
+/** Native app deep-link the mobile SSO round-trip returns to (spec 008). */
+const MOBILE_CALLBACK = "yappchat://auth";
+function mobileRedirect(params: Record<string, string>): string {
+  const u = new URL(MOBILE_CALLBACK);
+  for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
+  return u.toString();
+}
 
 /** GET /api/auth/sso/:provider/callback — exchange the code, then sign in / link. */
 export async function GET(req: Request, { params }: { params: Promise<{ provider: string }> }) {
@@ -33,13 +42,17 @@ export async function GET(req: Request, { params }: { params: Promise<{ provider
   const returnTo = store.get("yc_sso_r")?.value ?? "/app";
   const startedProvider = store.get("yc_sso_p")?.value;
   const intent = store.get("yc_sso_i")?.value === "link" ? "link" : "signin";
+  // Mobile (spec 008): return the result to the app via the yappchat://auth deep link.
+  const mobile = store.get("yc_sso_m")?.value === "1";
   // One-shot: clear the transient cookies regardless of outcome.
-  for (const n of ["yc_sso_v", "yc_sso_s", "yc_sso_r", "yc_sso_p", "yc_sso_i"]) {
+  for (const n of ["yc_sso_v", "yc_sso_s", "yc_sso_r", "yc_sso_p", "yc_sso_i", "yc_sso_m"]) {
     store.set(n, "", { path: "/api/auth/sso", maxAge: 0 });
   }
 
   if (!PROVIDERS.has(provider) || !codeVerifier || !state || startedProvider !== provider) {
-    return NextResponse.redirect(new URL("/signin?sso_error=state", base));
+    return NextResponse.redirect(
+      mobile ? mobileRedirect({ error: "state" }) : new URL("/signin?sso_error=state", base),
+    );
   }
 
   let claims: SsoClaims;
@@ -47,7 +60,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ provider
     claims = await completeCallback(provider as SsoProvider, callbackUrl, { codeVerifier, state });
   } catch (err) {
     console.error(`[sso] callback failed (${provider}):`, (err as Error).message);
-    return NextResponse.redirect(new URL("/signin?sso_error=failed", base));
+    return NextResponse.redirect(
+      mobile ? mobileRedirect({ error: "failed" }) : new URL("/signin?sso_error=failed", base),
+    );
   }
 
   // Explicit linking (FR-018): attach the identity to the already-signed-in user.
@@ -75,16 +90,27 @@ export async function GET(req: Request, { params }: { params: Promise<{ provider
       email: claims.email,
       name: claims.name,
     });
-    await issueSessionForUser(userid);
     // FR-024 — SSO accounts are verified-on-provision: auto-accept any pending
     // invites addressed to this email (and notify the inviters). Best-effort.
+    if (mobile) {
+      // Native flow: mint a bearer token and hand it back to the app via the deep
+      // link (the cookie is set too, but the app authenticates with the token).
+      const token = await issueSessionForUserWithToken(userid);
+      await autoAcceptContactInvitesForUser(userid).catch(() => {});
+      return NextResponse.redirect(mobileRedirect({ token }));
+    }
+    await issueSessionForUser(userid);
     await autoAcceptContactInvitesForUser(userid).catch(() => {});
     return NextResponse.redirect(new URL(resolveReturnPath(returnTo, { isSystemStaff: false }), base));
   } catch (err) {
     if (err instanceof AuthError && err.code === "sso_account_exists") {
-      return NextResponse.redirect(new URL("/signin?sso_error=account_exists", base));
+      return NextResponse.redirect(
+        mobile ? mobileRedirect({ error: "account_exists" }) : new URL("/signin?sso_error=account_exists", base),
+      );
     }
     console.error(`[sso] sign-in failed (${provider}):`, (err as Error).message);
-    return NextResponse.redirect(new URL("/signin?sso_error=failed", base));
+    return NextResponse.redirect(
+      mobile ? mobileRedirect({ error: "failed" }) : new URL("/signin?sso_error=failed", base),
+    );
   }
 }
