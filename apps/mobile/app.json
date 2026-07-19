@@ -18,6 +18,9 @@
     "extra": {
       "apiBaseUrl": "https://www.yappchatt.com"
     },
-    "plugins": ["expo-secure-store"]
+    "plugins": [
+      "expo-secure-store",
+      "expo-asset"
+    ]
   }
 }
