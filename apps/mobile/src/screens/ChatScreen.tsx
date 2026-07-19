@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { conversations as convApi, type Message } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
+import { setActiveConversation } from "@/notifications";
 import type { RootStackParamList } from "@/navigation/types";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Chat">;
@@ -56,6 +57,8 @@ export function ChatScreen({ route, navigation }: Props) {
       const d = await convApi.messages(conversationid);
       setMessages(d.messages ?? []);
       setError(null);
+      // We're viewing this room → advance the read marker (clears its unread).
+      void convApi.markRead(conversationid).catch(() => {});
     } catch {
       setError("Couldn't load messages.");
     } finally {
@@ -68,6 +71,12 @@ export function ChatScreen({ route, navigation }: Props) {
     const t = setInterval(() => void load(), POLL_MS);
     return () => clearInterval(t);
   }, [load]);
+
+  // Mark this room active while open so notifications skip it; clear on leave.
+  useEffect(() => {
+    setActiveConversation(conversationid);
+    return () => setActiveConversation(null);
+  }, [conversationid]);
 
   // Keep the latest message visible when the keyboard opens.
   useEffect(() => {

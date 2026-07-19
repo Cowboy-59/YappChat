@@ -8,6 +8,7 @@ import {
   sendMessage,
 } from "@/lib/engine/service";
 import { resolveAgentFromBearer } from "@/lib/auth/agents";
+import { pushMessageFanout } from "@/lib/push/service";
 import { maybeAutoAnswerForConversation } from "@/lib/communities/spaceai-answer";
 
 export const dynamic = "force-dynamic";
@@ -69,6 +70,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     // FR-019 — if this conversation is an AI-enabled space, let the support bot
     // answer question-shaped messages (background; never blocks the response).
     void maybeAutoAnswerForConversation(id, authorid, message.content).catch(() => {});
+    // Spec 009 — push the message to the other members (background, best-effort).
+    const pushTitle = message.authorname ?? "New message";
+    const pushBody = (message.content ?? "").trim().slice(0, 140) || "Sent an attachment";
+    void pushMessageFanout(id, authorid, pushTitle, pushBody).catch(() => {});
     return NextResponse.json({ message }, { status: 201 });
   } catch (err) {
     return engineError(err);
