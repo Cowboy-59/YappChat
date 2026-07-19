@@ -29,6 +29,20 @@ function isClaudeMessage(content: string | null): boolean {
 // Strip the leading "🤖 Claude" marker for the body — it's shown as the name instead.
 const CLAUDE_STRIP = /^\s*🤖\s*claude\b[\s:—-]*/i;
 
+/**
+ * Whether text looks like code / command output (so the agent status feed only
+ * force-translates PROSE — never git output, diffs, paths, or code blocks).
+ */
+function looksLikeCode(text: string): boolean {
+  const t = text.trim();
+  if (!t) return true;
+  if (t.includes("```")) return true; // fenced code block
+  if (/(^|\n)\s*[·$>#]\s/.test(t)) return true; // command / output line markers
+  if (/[{}[\]<>|]|=>|::|\/\/|\bnpm\b|\bgit\b|\.(ts|tsx|js|jsx|json|md|sql|mjs|cjs)\b|\/api\//.test(t)) return true;
+  const symbols = (t.match(/[^\w\s.,!?'"()\-:；，。áéíóúàèìòùäöüñç]/gi) || []).length;
+  return symbols / t.length > 0.12; // symbol-dense → treat as code
+}
+
 const btn = "inline-flex min-h-[34px] items-center justify-center rounded-lg px-3 text-sm font-semibold";
 const primary = `${btn} bg-primary text-primary-foreground hover:opacity-90`;
 const ghost = `${btn} border border-border hover:bg-muted`;
@@ -705,7 +719,12 @@ function Inner({ autoTranslate, currentUserId }: { autoTranslate: boolean; curre
                                 <MessageText
                                   messageId={m.id}
                                   content={displayContent ?? m.content}
-                                  translate={(autoTranslate || isClaude) && !onRight}
+                                  translate={
+                                    // The user's own auto-translate applies to all incoming;
+                                    // the agent status feed force-translates PROSE only.
+                                    (autoTranslate || (isClaude && !looksLikeCode(displayContent ?? m.content ?? ""))) &&
+                                    !onRight
+                                  }
                                 />
                                 <span className="mt-0.5 block text-right text-[10px] opacity-60">{clockTime(m.createdat)}</span>
                               </span>
