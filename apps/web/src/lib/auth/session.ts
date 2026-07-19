@@ -4,7 +4,7 @@ import { getDb } from "../db/client";
 import { orgmemberships, orgs, sessions, users } from "../db/auth-schema";
 import { ACTIVE_ORG_COOKIE } from "./constants";
 import { hashToken } from "./crypto";
-import { readSessionCookie } from "./cookies";
+import { readSessionToken } from "./cookies";
 import { isSystemStaff, type OrgSummary, type SessionUser, type SystemFlag } from "./shared";
 
 /**
@@ -19,9 +19,9 @@ import { isSystemStaff, type OrgSummary, type SessionUser, type SystemFlag } fro
 export { isSystemStaff };
 export type { OrgSummary, SessionUser, SystemFlag };
 
-/** Resolve the current session user from the session cookie, or null. */
+/** Resolve the current session user from the Bearer header or session cookie, or null. */
 export async function getSessionUser(): Promise<SessionUser | null> {
-  const token = await readSessionCookie();
+  const token = await readSessionToken();
   if (!token) return null;
 
   const db = getDb();
@@ -74,7 +74,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
 /** The id of the caller's current (non-revoked, unexpired) session row, or null.
  *  Used to flag "this device" in the session list and to target force-signout. */
 export async function getCurrentSessionId(): Promise<string | null> {
-  const token = await readSessionCookie();
+  const token = await readSessionToken();
   if (!token) return null;
   const db = getDb();
   if (!db) return null;
