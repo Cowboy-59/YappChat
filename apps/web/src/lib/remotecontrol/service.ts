@@ -106,6 +106,50 @@ export async function requestControl(
   return row;
 }
 
+/**
+ * Spec 089 FR-005a — host-initiated give-control from inside a call. The SHARER
+ * (host) offers control to the peer; the click IS the consent, so the session is
+ * created already-consented at `agent_pending` with the single-use token minted.
+ * Mirrors requestControl (supersede + create) + allowControl (token) with the
+ * roles reversed. Returns the session + raw token for the agent/desktop injector.
+ */
+export async function offerControl(
+  dmconversationid: string,
+  hostuserid: string,
+): Promise<{ session: RemoteControlSessionRow; token: string }> {
+  const controlleruserid = await resolveDmPeer(dmconversationid, hostuserid);
+
+  // Supersede any lingering active session for this DM (fail-closed hygiene).
+  const stale = await db()
+    .select({ id: remotecontrolsessions.id })
+    .from(remotecontrolsessions)
+    .where(
+      and(
+        eq(remotecontrolsessions.dmconversationid, dmconversationid),
+        inArray(remotecontrolsessions.status, ACTIVE_STATUSES),
+      ),
+    );
+  for (const s of stale) await endControl(s.id, hostuserid, "disconnected").catch(() => {});
+
+  const token = generateToken();
+  const [row] = await db()
+    .insert(remotecontrolsessions)
+    .values({
+      id: uuidv7(),
+      dmconversationid,
+      controlleruserid,
+      hostuserid,
+      status: "agent_pending",
+      tokenhash: hashToken(token),
+      tokenexpiresat: new Date(Date.now() + TOKEN_TTL_MS),
+    })
+    .returning();
+  await audit(row.id, "requested", hostuserid);
+  await audit(row.id, "allowed", hostuserid);
+  void publishControlStatus(row);
+  return { session: row, token };
+}
+
 /** Load a session and assert `userid` is one of its two participants. */
 export async function getParticipantSession(
   sessionid: string,
