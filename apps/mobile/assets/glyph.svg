@@ -1,0 +1,14 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="dot" x1="0" y1="0" x2="0" y2="1" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4F46E5"/>
+      <stop offset="1" stop-color="#7C3AED"/>
+    </linearGradient>
+  </defs>
+  <!-- white chat bubble on transparent (for Android adaptive foreground + splash) -->
+  <rect x="330" y="356" width="364" height="258" rx="64" fill="#FFFFFF"/>
+  <path d="M 412 588 L 384 672 L 480 592 Z" fill="#FFFFFF"/>
+  <circle cx="424" cy="485" r="30" fill="url(#dot)"/>
+  <circle cx="512" cy="485" r="30" fill="url(#dot)"/>
+  <circle cx="600" cy="485" r="30" fill="url(#dot)"/>
+</svg>
