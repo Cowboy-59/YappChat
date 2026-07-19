@@ -197,6 +197,12 @@ export const conversationmembers = ycSchema.table(
     // member. NULL = inherit the global account default (users.autotranslate);
     // true/false = force this room on/off regardless of the account default.
     autotranslate: boolean("autotranslate"),
+    // Spec 090 — per-user chat grouping ("folder") this member filed this room
+    // under. NULL = ungrouped (renders in the flat list as today). `position`
+    // orders rooms within the grouping. Kept FK-less in Drizzle (like `userid`);
+    // the real FK → chatgroupings.id ON DELETE SET NULL lives in migration 0028.
+    groupingid: uuid("groupingid"),
+    position: integer("position"),
     joinedat: timestamp("joinedat", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

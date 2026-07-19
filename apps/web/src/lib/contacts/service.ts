@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, ilike, isNotNull, isNull, lt, ne, or } from "drizzle-orm";
+import { and, desc, eq, gt, ilike, inArray, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { uuidv7 } from "uuidv7";
 import { getDb } from "../db/client";
 import { users } from "../db/auth-schema";
@@ -372,6 +372,43 @@ export async function inviteContactByEmail(inviterid: string, email: string): Pr
 }
 
 /** Create an ad-hoc group chat — all members must be accepted contacts of the creator. */
+/**
+ * Create a room (kind `group`) owned by the creator, with an optional title and
+ * any number of accepted-contact members — INCLUDING zero (a **solo room**, e.g. a
+ * spec 090 project room to be bound to remote management later). Members must be
+ * accepted contacts of the creator; validation is atomic (all-or-nothing).
+ */
+export async function createRoom(
+  creatorid: string,
+  memberIds: string[],
+  opts?: { title?: string },
+): Promise<{ conversationid: string }> {
+  const db = getDb();
+  if (!db) throw new EngineError("db_unavailable", 503);
+  const ids = [...new Set(memberIds.filter((id) => id && id !== creatorid))];
+  const channelid = await getDirectChannel();
+  const title = opts?.title?.trim() ?? "";
+
+  return db.transaction(async (tx) => {
+    for (const id of ids) {
+      const { usera, userb } = pairKey(creatorid, id);
+      const [acc] = await tx
+        .select({ id: contacts.id })
+        .from(contacts)
+        .where(and(eq(contacts.usera, usera), eq(contacts.userb, userb), eq(contacts.status, "accepted")))
+        .limit(1);
+      if (!acc) throw new EngineError("not_a_contact", 403, "you can only add accepted contacts");
+    }
+    const conversationid = uuidv7();
+    await tx.insert(conversations).values({ id: conversationid, channelid, title, kind: "group" });
+    await tx.insert(conversationmembers).values({ id: uuidv7(), conversationid, userid: creatorid, role: "member" });
+    for (const id of ids) {
+      await tx.insert(conversationmembers).values({ id: uuidv7(), conversationid, userid: id, role: "member" });
+    }
+    return { conversationid };
+  });
+}
+
 export async function createGroupChat(creatorid: string, memberIds: string[]): Promise<{ conversationid: string }> {
   const db = getDb();
   if (!db) throw new EngineError("db_unavailable", 503);
@@ -555,11 +592,19 @@ async function upsertAcceptedContact(db: Db, inviterid: string, accepterId: stri
  */
 export async function listMyChats(
   userid: string,
-): Promise<Array<{ conversationid: string; kind: string; title: string; name: string }>> {
+): Promise<Array<{ conversationid: string; kind: string; title: string; name: string; groupingid: string | null; solo: boolean }>> {
   const db = getDb();
   if (!db) return [];
   const rows = await db
-    .select({ id: conversations.id, kind: conversations.kind, title: conversations.title, lastmessageat: conversations.lastmessageat })
+    .select({
+      id: conversations.id,
+      kind: conversations.kind,
+      title: conversations.title,
+      lastmessageat: conversations.lastmessageat,
+      // Spec 090 — the caller's per-user grouping placement for this room.
+      groupingid: conversationmembers.groupingid,
+      position: conversationmembers.position,
+    })
     .from(conversationmembers)
     .innerJoin(conversations, eq(conversationmembers.conversationid, conversations.id))
     .where(eq(conversationmembers.userid, userid));
@@ -567,7 +612,19 @@ export async function listMyChats(
     .filter((r) => r.kind === "person" || r.kind === "group")
     .sort((a, b) => (b.lastmessageat?.getTime() ?? 0) - (a.lastmessageat?.getTime() ?? 0));
 
-  const out: Array<{ conversationid: string; kind: string; title: string; name: string }> = [];
+  // Member counts in one batched query → detect a "solo" room (spec 090 project /
+  // remote-management room: a group with only the creator). No N+1.
+  const memberCount = new Map<string, number>();
+  if (chats.length > 0) {
+    const counts = await db
+      .select({ cid: conversationmembers.conversationid, n: sql<number>`count(*)::int` })
+      .from(conversationmembers)
+      .where(inArray(conversationmembers.conversationid, chats.map((c) => c.id)))
+      .groupBy(conversationmembers.conversationid);
+    for (const c of counts) memberCount.set(c.cid, c.n);
+  }
+
+  const out: Array<{ conversationid: string; kind: string; title: string; name: string; groupingid: string | null; solo: boolean }> = [];
   for (const r of chats) {
     let name = r.title?.trim() ?? "";
     if (r.kind === "person" || !name) {
@@ -580,7 +637,8 @@ export async function listMyChats(
       if (r.kind === "person") name = names[0] || "Direct message";
       else if (!name) name = names.slice(0, 3).join(", ") || "Group chat";
     }
-    out.push({ conversationid: r.id, kind: r.kind, title: r.title, name });
+    const solo = r.kind === "group" && (memberCount.get(r.id) ?? 1) === 1;
+    out.push({ conversationid: r.id, kind: r.kind, title: r.title, name, groupingid: r.groupingid ?? null, solo });
   }
   return out;
 }
