@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { engineContext, engineError, readJson } from "@/lib/engine/http";
-import { conversationRole, isConversationMember, listMessages, sendMessage } from "@/lib/engine/service";
+import {
+  clearConversationMessages,
+  conversationRole,
+  isConversationMember,
+  listMessages,
+  sendMessage,
+} from "@/lib/engine/service";
 import { maybeAutoAnswerForConversation } from "@/lib/communities/spaceai-answer";
 
 export const dynamic = "force-dynamic";
@@ -48,6 +54,24 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     // answer question-shaped messages (background; never blocks the response).
     void maybeAutoAnswerForConversation(id, ctx.user.id, message.content).catch(() => {});
     return NextResponse.json({ message }, { status: 201 });
+  } catch (err) {
+    return engineError(err);
+  }
+}
+
+/**
+ * DELETE /api/engine/conversations/:id/messages[?except=<messageId>] — clear the
+ * conversation (members only). `except` keeps a single message (e.g. the last
+ * incoming/agent message the client wants to preserve).
+ */
+export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const ctx = await engineContext();
+  if (!ctx.ok) return ctx.response;
+  const { id } = await params;
+  const except = new URL(req.url).searchParams.get("except") ?? undefined;
+  try {
+    await clearConversationMessages(id, ctx.user.id, except);
+    return NextResponse.json({ ok: true });
   } catch (err) {
     return engineError(err);
   }

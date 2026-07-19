@@ -6,6 +6,7 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 
 import { AuthProvider, useAuth } from "@/auth/AuthContext";
+import { useNewMessageNotifier } from "@/notifications";
 import { LoginScreen } from "@/screens/LoginScreen";
 import { ChatsScreen } from "@/screens/ChatsScreen";
 import { ContactsScreen } from "@/screens/ContactsScreen";
@@ -27,6 +28,8 @@ function HomeTabs() {
 
 function Root() {
   const { user, loading } = useAuth();
+  // Poll for new messages and fire local notifications while signed in.
+  useNewMessageNotifier(Boolean(user));
 
   if (loading) {
     return (

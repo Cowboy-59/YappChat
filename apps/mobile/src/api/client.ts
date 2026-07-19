@@ -163,4 +163,9 @@ export const conversations = {
     ),
   send: (conversationid: string, content: string) =>
     api.post<{ message: Message }>(`/api/engine/conversations/${conversationid}/messages`, { content }),
+  /** Clear all messages, optionally keeping one (e.g. the last incoming message). */
+  clear: (conversationid: string, exceptMessageId?: string) =>
+    api.del<{ ok: boolean }>(
+      `/api/engine/conversations/${conversationid}/messages${exceptMessageId ? `?except=${encodeURIComponent(exceptMessageId)}` : ""}`,
+    ),
 };
