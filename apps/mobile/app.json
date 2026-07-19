@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "YappChat",
-    "slug": "yappchat",
+    "slug": "yappchatt",
     "scheme": "yappchat",
     "version": "0.1.0",
     "orientation": "portrait",
@@ -16,11 +16,15 @@
       "edgeToEdgeEnabled": true
     },
     "extra": {
-      "apiBaseUrl": "https://www.yappchatt.com"
+      "apiBaseUrl": "https://www.yappchatt.com",
+      "eas": {
+        "projectId": "755bfa8b-a1d3-4e48-a8cf-e2f6b1b3106a"
+      }
     },
     "plugins": [
       "expo-secure-store",
       "expo-asset"
-    ]
+    ],
+    "owner": "wxperts-llc"
   }
 }
