@@ -8,6 +8,7 @@ import * as engineSchema from "./engine-schema";
 import * as wsSchema from "./ws-schema";
 import * as contactsSchema from "./contacts-schema";
 import * as groupingsSchema from "./groupings-schema";
+import * as pushSchema from "./push-schema";
 
 const schema = {
   ...landingSchema,
@@ -18,6 +19,7 @@ const schema = {
   ...wsSchema,
   ...contactsSchema,
   ...groupingsSchema,
+  ...pushSchema,
 };
 
 /**

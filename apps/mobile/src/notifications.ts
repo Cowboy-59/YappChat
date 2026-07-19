@@ -1,7 +1,8 @@
 import { useEffect, useRef } from "react";
 import { Platform } from "react-native";
+import Constants from "expo-constants";
 import * as Notifications from "expo-notifications";
-import { chats } from "@/api/client";
+import { api, chats } from "@/api/client";
 
 /**
  * Message notifications (spec 008 / spec 009 seam).
@@ -27,6 +28,13 @@ Notifications.setNotificationHandler({
 
 const CHANNEL_ID = "messages";
 
+// The conversation currently open on screen — we never notify for it (you're
+// already reading it). Set by ChatScreen on focus, cleared on blur.
+let activeConversationId: string | null = null;
+export function setActiveConversation(id: string | null): void {
+  activeConversationId = id;
+}
+
 async function ensureAndroidChannel(): Promise<void> {
   if (Platform.OS !== "android") return;
   await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
@@ -42,6 +50,36 @@ export async function requestNotificationPermission(): Promise<boolean> {
   if (current.granted) return true;
   const req = await Notifications.requestPermissionsAsync();
   return req.granted;
+}
+
+// The Expo push token registered for this device this session (for unregister).
+let pushToken: string | null = null;
+
+/**
+ * Register this device's Expo push token with the server so the backend can push
+ * even when the app is closed (spec 009). No-op in Expo Go / without credentials —
+ * getExpoPushTokenAsync throws there, so real background push needs a dev/prod build.
+ */
+export async function registerForPush(): Promise<void> {
+  try {
+    if (!(await requestNotificationPermission())) return;
+    const projectId = (Constants.expoConfig?.extra as { eas?: { projectId?: string } } | undefined)?.eas?.projectId;
+    const { data } = await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
+    pushToken = data;
+    await api.post("/api/mobile/push/register", { token: data, platform: Platform.OS });
+  } catch {
+    /* Expo Go (no remote push) or missing push credentials — silently skip. */
+  }
+}
+
+/** Remove this device's push token on sign-out. */
+export async function unregisterPush(): Promise<void> {
+  try {
+    if (pushToken) await api.del(`/api/mobile/push/register?token=${encodeURIComponent(pushToken)}`);
+  } catch {
+    /* ignore */
+  }
+  pushToken = null;
 }
 
 /** Present an immediate local notification for a new message. */
@@ -66,7 +104,8 @@ export function useNewMessageNotifier(enabled: boolean): void {
       return;
     }
     let cancelled = false;
-    void requestNotificationPermission();
+    // Request permission + register this device's push token for background push.
+    void registerForPush();
 
     const poll = async () => {
       try {
@@ -76,6 +115,8 @@ export function useNewMessageNotifier(enabled: boolean): void {
         const names = new Map(d.chats.map((c) => [c.conversationid, c.name]));
         if (baseline.current) {
           for (const [cid, n] of Object.entries(unread)) {
+            // Skip the chat you're currently viewing — no ping while you read it.
+            if (cid === activeConversationId) continue;
             if (n > (baseline.current[cid] ?? 0)) {
               await presentMessageNotification(names.get(cid) ?? "New message", "You have a new message");
             }

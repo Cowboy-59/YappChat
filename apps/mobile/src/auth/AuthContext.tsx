@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { auth, ApiError, loadToken, signInWithSso, type SessionUser, type SsoProvider } from "@/api/client";
+import { unregisterPush } from "@/notifications";
 
 type AuthState = {
   user: SessionUser | null;
@@ -56,6 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     try {
+      await unregisterPush(); // drop the push token while still authenticated
       await auth.logout();
     } finally {
       setUser(null);

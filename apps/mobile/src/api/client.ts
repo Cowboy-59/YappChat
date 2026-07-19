@@ -169,4 +169,7 @@ export const conversations = {
     api.del<{ ok: boolean }>(
       `/api/engine/conversations/${conversationid}/messages${exceptMessageId ? `?except=${encodeURIComponent(exceptMessageId)}` : ""}`,
     ),
+  /** Advance the caller's read marker (clears the unread count for this room). */
+  markRead: (conversationid: string) =>
+    api.post<{ ok: boolean }>(`/api/engine/conversations/${conversationid}/read`, {}),
 };
