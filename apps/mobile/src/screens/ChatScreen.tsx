@@ -97,7 +97,7 @@ export function ChatScreen({ route, navigation }: Props) {
     navigation.setOptions({
       headerRight: () => (
         <TouchableOpacity onPress={clearConversation} hitSlop={8} style={{ paddingHorizontal: 4 }}>
-          <Text style={{ color: "#1a73e8", fontWeight: "600", fontSize: 15 }}>Clear</Text>
+          <Text style={{ color: "#4F46E5", fontWeight: "600", fontSize: 15 }}>Clear</Text>
         </TouchableOpacity>
       ),
     });
@@ -206,7 +206,7 @@ const styles = StyleSheet.create({
   listContent: { padding: 12, gap: 6 },
   empty: { textAlign: "center", color: "#80868b", marginTop: 48 },
   bubble: { maxWidth: "82%", borderRadius: 16, paddingHorizontal: 12, paddingVertical: 8 },
-  bubbleMine: { alignSelf: "flex-end", backgroundColor: "#1a73e8" },
+  bubbleMine: { alignSelf: "flex-end", backgroundColor: "#4F46E5" },
   bubbleTheirs: { alignSelf: "flex-start", backgroundColor: "#f1f3f4" },
   author: { fontSize: 11, fontWeight: "700", color: "#5f6368", marginBottom: 2 },
   bubbleText: { fontSize: 15, color: "#111" },
@@ -234,7 +234,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: "#111",
   },
-  sendBtn: { backgroundColor: "#1a73e8", borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10 },
+  sendBtn: { backgroundColor: "#4F46E5", borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10 },
   sendBtnDisabled: { opacity: 0.5 },
   sendText: { color: "#fff", fontWeight: "700" },
 });

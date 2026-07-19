@@ -6,7 +6,7 @@ export function SignOutButton() {
   const { signOut } = useAuth();
   return (
     <TouchableOpacity onPress={() => void signOut()} hitSlop={8} style={{ paddingHorizontal: 12 }}>
-      <Text style={{ color: "#1a73e8", fontWeight: "600", fontSize: 15 }}>Sign out</Text>
+      <Text style={{ color: "#4F46E5", fontWeight: "600", fontSize: 15 }}>Sign out</Text>
     </TouchableOpacity>
   );
 }

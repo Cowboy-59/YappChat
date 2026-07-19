@@ -45,6 +45,12 @@
         }
       ]
     ],
-    "owner": "wxperts-llc"
+    "owner": "wxperts-llc",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/755bfa8b-a1d3-4e48-a8cf-e2f6b1b3106a"
+    }
   }
 }
