@@ -14,7 +14,7 @@ type Message = { id: string; authorid: string; authorname?: string | null; autho
 type UserLite = { id: string; displayname: string; email: string };
 type Contact = UserLite & { conversationid: string | null };
 type Request = { contactid: string; conversationid: string | null; from: UserLite };
-type Chat = { conversationid: string; kind: string; name: string };
+type Chat = { conversationid: string; kind: string; name: string; solo?: boolean };
 
 const SYSTEM_AUTHOR = "yappchat-contact";
 
@@ -71,6 +71,42 @@ function MsgAvatar({ url, name }: { url?: string | null; name: string }) {
     <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[11px] font-semibold uppercase text-foreground">
       {name.slice(0, 1)}
     </span>
+  );
+}
+
+/**
+ * Solo-room banner (spec 090): the room's id is the handle you give Claude to
+ * connect for remote management — there is no other party and no accept step.
+ */
+function RoomIdBar({ id }: { id: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(id);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard blocked — the id is still selectable in the field */
+    }
+  };
+  return (
+    <div className="flex items-center gap-2 border-b border-border bg-muted/50 px-4 py-2 text-xs">
+      <span className="shrink-0 font-semibold text-muted-foreground">Room ID</span>
+      <code
+        onClick={copy}
+        title="Click to copy"
+        className="min-w-0 flex-1 cursor-pointer truncate rounded bg-background px-2 py-1 font-mono text-foreground"
+      >
+        {id}
+      </code>
+      <button
+        onClick={copy}
+        className="shrink-0 rounded-md border border-border px-2 py-1 font-semibold text-foreground hover:bg-muted"
+      >
+        {copied ? "Copied" : "Copy"}
+      </button>
+      <span className="hidden shrink-0 text-muted-foreground sm:inline">— give this to Claude to connect</span>
+    </div>
   );
 }
 
@@ -414,8 +450,15 @@ function Inner({ autoTranslate, currentUserId }: { autoTranslate: boolean; curre
   }
 
   const acceptedContact = contacts.find((c) => c.conversationid === activeConv);
-  const isGroup = chats.some((c) => c.conversationid === activeConv && c.kind === "group");
-  const canSend = Boolean(acceptedContact) || isGroup;
+  const activeChat = chats.find((c) => c.conversationid === activeConv);
+  const isGroup = activeChat?.kind === "group";
+  // A solo room (group with just the creator) is the Claude remote-management room:
+  // no other party, no accept step — always sendable, and its id is shown to connect.
+  const activeSolo = Boolean(activeChat?.solo);
+  // Only an UNACCEPTED person DM is send-gated; group/solo rooms are always sendable.
+  // (Default open when the chat list hasn't loaded yet — the server still gates.)
+  const isPersonDm = activeChat?.kind === "person";
+  const canSend = !isPersonDm || Boolean(acceptedContact);
   const pendingIncoming = requests.find((q) => q.conversationid && q.conversationid === activeConv);
   const activeName = activeConv ? nameForConv(activeConv) : "";
 
@@ -483,6 +526,7 @@ function Inner({ autoTranslate, currentUserId }: { autoTranslate: boolean; curre
                 </span>
               )}
             </div>
+            {activeSolo && activeConv && <RoomIdBar id={activeConv} />}
             <div ref={scrollRef} onScroll={onListScroll} className="min-h-0 flex-1 overflow-y-auto p-4">
               <div className="space-y-3" style={{ zoom }}>
               {messages.map((m, i) => {
