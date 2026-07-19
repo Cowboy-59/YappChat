@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
 import { useAuth } from "@/auth/AuthContext";
 import { ApiError } from "@/api/client";
 
@@ -84,11 +85,19 @@ export function LoginScreen() {
         {error && <Text style={styles.error}>{error}</Text>}
 
         <TouchableOpacity
-          style={[styles.button, (busy || !email || !password) && styles.buttonDisabled]}
+          style={(busy || !email || !password) && styles.buttonDisabled}
           onPress={submit}
           disabled={busy || !email || !password}
+          activeOpacity={0.85}
         >
-          {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Sign in</Text>}
+          <LinearGradient
+            colors={["#6366F1", "#4F46E5", "#22D3EE"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.button}
+          >
+            {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Sign in</Text>}
+          </LinearGradient>
         </TouchableOpacity>
 
         <View style={styles.dividerRow}>
@@ -128,7 +137,7 @@ const styles = StyleSheet.create({
   },
   error: { color: "#c5221f", marginBottom: 8, fontSize: 14 },
   button: {
-    backgroundColor: "#1a73e8",
+    backgroundColor: "#4F46E5",
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: "center",
