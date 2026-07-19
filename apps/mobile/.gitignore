@@ -1,0 +1,13 @@
+# Expo / React Native
+node_modules/
+.expo/
+dist/
+web-build/
+*.orig.*
+
+# Native builds
+/ios
+/android
+
+# Env / secrets
+.env*.local

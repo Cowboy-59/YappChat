@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "YappChat",
+    "slug": "yappchat",
+    "scheme": "yappchat",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.wxperts.yappchat"
+    },
+    "android": {
+      "package": "com.wxperts.yappchat",
+      "edgeToEdgeEnabled": true
+    },
+    "extra": {
+      "apiBaseUrl": "https://www.yappchatt.com"
+    },
+    "plugins": ["expo-secure-store"]
+  }
+}
