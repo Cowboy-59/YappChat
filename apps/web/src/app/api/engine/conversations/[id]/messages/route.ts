@@ -13,18 +13,33 @@ import { maybeAutoAnswerForConversation } from "@/lib/communities/spaceai-answer
 
 export const dynamic = "force-dynamic";
 
-/** GET /api/engine/conversations/:id/messages — conversation history (members only). */
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const ctx = await engineContext();
-  if (!ctx.ok) return ctx.response;
+/**
+ * GET /api/engine/conversations/:id/messages — conversation history (members only).
+ * Accepts a member's session OR an agent's `yca_…` Bearer token (spec 091), so the
+ * external Claude bridge can READ the user's commands (and its own history) with the
+ * same token it posts with. Only members may read.
+ */
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  // Authorization: only a member may read the history — the SAME predicate the WS
-  // `conversation:{id}` subscribe enforces (server/ws.ts). Without this, any
-  // signed-in user could read another user's private DM by conversation id.
-  if (!(await isConversationMember(id, ctx.user.id))) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  const bearer = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
+  const agent = bearer.startsWith("yca_") ? await resolveAgentFromBearer(req) : null;
+  let readerId: string;
+  if (agent) {
+    if (!(await isConversationMember(id, agent.agentid))) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
+    readerId = agent.agentid;
+  } else {
+    const ctx = await engineContext();
+    if (!ctx.ok) return ctx.response;
+    // Only a member may read the history — the SAME predicate the WS
+    // `conversation:{id}` subscribe enforces (server/ws.ts).
+    if (!(await isConversationMember(id, ctx.user.id))) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
+    readerId = ctx.user.id;
   }
-  const [messages, myrole] = await Promise.all([listMessages(id), conversationRole(id, ctx.user.id)]);
+  const [messages, myrole] = await Promise.all([listMessages(id), conversationRole(id, readerId)]);
   return NextResponse.json({ messages, myrole });
 }
 

@@ -1,153 +1,121 @@
-# YappChat integration change — agent (Claude) posts as itself
+# YappChat integration change — agent (Claude) two-way channel
 
-**Audience:** the wxKanban kit / headless bridge that posts Claude status + output into a YappChat room.
-**Change:** switch from *"mint a user session from an email and post as the room owner"* to *"authenticate with a per-room agent token and post as **Claude**."*
-**Status:** live on `https://www.yappchatt.com` (spec 091 slice #1). No wxKanban schema change; this is a bridge/config change only.
+**Audience:** the wxKanban kit / headless bridge that connects Claude to a YappChat room.
+**Change:** replace *"mint a user session from an email and post as the owner"* with a single **per-room agent token** that both **reads the user's commands** and **posts Claude's output** (authored as "Claude").
+**Status:** live on `https://www.yappchatt.com` (spec 091). Bridge/config change only.
 
 ---
 
-## TL;DR
+## The loop
 
-- Stop minting a `yc_session` from `WXKANBAN_CHAT_EMAIL`. **Delete that path.**
-- Get a **per-room agent token** (`yca_…`) once, from the YappChat web app → open the project room → **"Connect Claude"** bar → Copy.
-- Post messages with `Authorization: Bearer <yca_token>`. Messages are now authored by **"Claude"** (not the owner) and render on the left automatically.
-- The `🤖` prefix in the content is **no longer required** (kept working for backward-compat).
+```
+  YOU (in the YappChat app)  ──▶  type a command in the room  ──▶  bridge READS it (GET)
+                                                                     │
+                                                                     ▼
+  YappChat room  ◀── bridge POSTS Claude's output/status ◀──  Claude runs it on your machine
+```
+
+- **You → Claude:** you post a message in the room **as yourself** (via the app). That message is the command that tells Claude what to do — the bridge reads it.
+- **Claude → you:** the bridge posts Claude's status/output **as "Claude"** with the agent token.
+- **One token does both** read (GET) and write (POST). No user session, no email, no WebSocket.
 
 ---
 
 ## Env vars
 
 ```dotenv
-# KEEP
-WXKANBAN_YAPPCHAT_BASE_URL=https://www.yappchatt.com
-WXKANBAN_REMOTE_ROOM_ID=<conversationId of the project room>
-
-# ADD (replaces the email/session identity)
-WXKANBAN_YAPPCHAT_TOKEN=yca_xxxxxxxxxxxxxxxxxxxxxxxx
+# KEEP (posting + reading)
+YAPPCHAT_URL=https://www.yappchatt.com
+YAPPCHAT_ROOM=<conversationId of the project room>
+YAPPCHAT_TOKEN=yca_xxxxxxxxxxxxxxxxxxxxxxxx    # from "Connect Claude" in that room
 
 # DROP
-# WXKANBAN_CHAT_EMAIL          -> the token is the identity now (posts as "Claude", not the owner)
-# WXKANBAN_CHAT_DISPLAY_NAME   -> author name is "Claude", set server-side (not overridable)
-# WXKANBAN_WS_URL              -> one-way REST posting; YappChat is not the control channel
-# WXKANBAN_CONSUMER_SECRET     -> the broker/consumer-session seam is no longer used for posting
+# YAPPCHAT_CHAT_EMAIL          -> the token is the identity now (reads + posts). No session mint.
+# YAPPCHAT_WS_URL              -> commands are read by polling GET; no WebSocket needed.
+# WXKANBAN_CONSUMER_SECRET     -> the broker/session path is gone.
 
-# KEEP ONLY IF the bridge calls the wxKanban app itself (not needed to post to YappChat)
-# WXKANBAN_APP_BASE_URL=https://wxkanban.wxperts.com
+# KEEP for the wxKanban side (unrelated to YappChat)
+# WXKANBAN_API_TOKEN=…
+# DATABASE_URL=…
 ```
 
-| Var | Verdict |
-| --- | --- |
-| `WXKANBAN_YAPPCHAT_BASE_URL` | keep |
-| `WXKANBAN_REMOTE_ROOM_ID` | keep |
-| `WXKANBAN_YAPPCHAT_TOKEN` | **add** (`yca_…`) |
-| `WXKANBAN_CHAT_EMAIL` | drop |
-| `WXKANBAN_CHAT_DISPLAY_NAME` | drop |
-| `WXKANBAN_WS_URL` | drop |
-| `WXKANBAN_CONSUMER_SECRET` | drop (for this) |
-| `WXKANBAN_APP_BASE_URL` | keep only if used for wxKanban-side calls |
+> The token is **per-room**: mint it via **Connect Claude** *while viewing the room whose id is `YAPPCHAT_ROOM`*. A token for a different room returns `403`.
 
 ---
 
-## Getting the token (one-time, per room)
+## 1) Read the user's commands (GET)
 
-Human step, done once per project room:
-
-1. Sign in to `https://www.yappchatt.com` as the room owner.
-2. Open the project room (the solo/`projects`-grouping room).
-3. In the **"Connect Claude"** bar at the top of the conversation, click **Connect Claude**.
-4. **Copy** the `yca_…` token shown (shown once) into `WXKANBAN_YAPPCHAT_TOKEN`.
-
-The token is **per-room and revocable**. It can only post to the room it was minted for.
-
-(Programmatic equivalent, if the bridge ever needs to self-provision — requires the owner's session cookie, not the agent token: `POST /api/chats/{roomId}/agent` → `{ "ok": true, "token": "yca_…" }`.)
-
----
-
-## Posting a message (the only call the bridge needs)
+Poll for new messages and act on the human ones (i.e. `isagent === false` and not your own agent id).
 
 ```
-POST {WXKANBAN_YAPPCHAT_BASE_URL}/api/engine/conversations/{WXKANBAN_REMOTE_ROOM_ID}/messages
-Authorization: Bearer {WXKANBAN_YAPPCHAT_TOKEN}
+GET {YAPPCHAT_URL}/api/engine/conversations/{YAPPCHAT_ROOM}/messages
+Authorization: Bearer {YAPPCHAT_TOKEN}
+```
+
+Response: `{ "messages": NormalizedMessage[], "myrole": string|null }`, oldest→newest (max 200). Each message:
+
+```json
+{ "id": "…", "authorid": "…", "authorname": "Andy", "isagent": false,
+  "content": "deploy the web app", "createdat": "2026-07-19T…Z", "deletedat": null }
+```
+
+Bridge logic:
+- Track the last processed message `id` (or `createdat`).
+- New **command** = a message with **`isagent: false`** (a human — the user) newer than your cursor. Ignore `isagent: true` (Claude's own posts) and system messages.
+- Poll every few seconds (e.g. 3–5s).
+
+## 2) Post Claude's output (POST)
+
+```
+POST {YAPPCHAT_URL}/api/engine/conversations/{YAPPCHAT_ROOM}/messages
+Authorization: Bearer {YAPPCHAT_TOKEN}
 Content-Type: application/json
 
 { "content": "on project wxKanban is connected" }
 ```
 
-Notes:
-- **Path:** the room id is `WXKANBAN_REMOTE_ROOM_ID` (a `conversationId`).
-- **Auth:** the literal header is `Authorization: Bearer yca_…`.
-- **Body:** `{ "content": string }`. Optional `"mediaurl": string[]` (pre-uploaded S3 keys) — not needed for status.
-- **No `🤖` prefix needed.** The message is authored by the Claude agent, so YappChat renders it on the **left** as **"🤖 Claude"** on its own. (A leading `🤖 Claude` in the content is stripped for display if present — harmless.)
+- Body: `{ "content": string }` (optional `"mediaurl": string[]`).
+- **No `🤖` prefix needed** — the token authors the message as **Claude**, so it renders on the left as "🤖 Claude" automatically.
+- Success: `201` with `{ "message": { …, "authorname": "Claude", "isagent": true } }`.
 
-### curl
+### curl (both directions)
 
 ```bash
-curl -sS -X POST \
-  "$WXKANBAN_YAPPCHAT_BASE_URL/api/engine/conversations/$WXKANBAN_REMOTE_ROOM_ID/messages" \
-  -H "Authorization: Bearer $WXKANBAN_YAPPCHAT_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"content":"on project wxKanban is connected"}'
+# read commands
+curl -sS "$YAPPCHAT_URL/api/engine/conversations/$YAPPCHAT_ROOM/messages" \
+  -H "Authorization: Bearer $YAPPCHAT_TOKEN"
+
+# post output
+curl -sS -X POST "$YAPPCHAT_URL/api/engine/conversations/$YAPPCHAT_ROOM/messages" \
+  -H "Authorization: Bearer $YAPPCHAT_TOKEN" -H "Content-Type: application/json" \
+  -d '{"content":"branch is main; deploying now"}'
 ```
 
-### Node (fetch)
+### Errors
 
-```js
-await fetch(
-  `${process.env.WXKANBAN_YAPPCHAT_BASE_URL}/api/engine/conversations/${process.env.WXKANBAN_REMOTE_ROOM_ID}/messages`,
-  {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.WXKANBAN_YAPPCHAT_TOKEN}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ content: "on project wxKanban is connected" }),
-  },
-);
-```
-
-### Success response — `201`
-
-```json
-{
-  "message": {
-    "id": "…",
-    "conversationid": "…",
-    "authorid": "<claude agent user id>",
-    "authorname": "Claude",
-    "isagent": true,
-    "content": "on project wxKanban is connected",
-    "createdat": "2026-07-19T…Z"
-  }
-}
-```
-
-`isagent: true` is how every client (web + mobile) knows to render it as Claude.
-
-### Error responses
-
-| Status | body `error` | Meaning / fix |
+| Status | `error` | Fix |
 | --- | --- | --- |
-| `400` | `content_required` | Empty content and no media. Send non-empty `content`. |
-| `401` | `Unauthorized` | Missing/blank bearer. Set the header. |
-| `403` | `forbidden` | Token valid but not bound to **this** room (wrong `REMOTE_ROOM_ID`, or Claude not a member). Re-mint the token for the correct room. |
-| `404` | `conversation_not_found` | Bad room id. |
+| `400` | `content_required` | Empty content on POST. |
+| `401` | `Unauthorized` | Missing/blank bearer, or a non-`yca_` token. |
+| `403` | `forbidden` | Token not bound to **this** room — re-mint via Connect Claude in the right room. |
+| `404` | `conversation_not_found` | Bad `YAPPCHAT_ROOM`. |
 
 ---
 
-## Behavioural changes for the kit to be aware of
+## Behavioural notes
 
-- **Author is "Claude", not the owner.** Prior messages posted as the owner still exist and still render (legacy `🤖`-string heuristic); new token-posted messages are authored by the agent.
-- **One agent membership per room.** Binding adds a `kind='agent'` "Claude" user as a room member. This does **not** affect the room's "solo/project" status (agent members are excluded from that count) and never appears in the owner's contacts/DM lists.
-- **Prose-only translation.** YappChat auto-translates Claude's **prose** status lines into members' languages; **code/command output/diffs are left untranslated** (detected by a code heuristic). No action needed from the bridge — send content as-is.
-- **Posting only.** The agent token is accepted on the **POST messages** endpoint only. Reading history (`GET …/messages`) still requires a user session — the bridge doesn't need it for a one-way status feed. YappChat is **not** the control channel.
-- **Token lifecycle.** Per-room, hashed server-side, shown once, revocable (re-mint via "Connect Claude" to rotate). If a token leaks, revoke by minting a new one / revoking the old via the agent-tokens admin path.
+- **Author is "Claude", not you.** Your posts stay yours (they're the commands); Claude's posts are the agent.
+- **Read + write with one token.** GET and POST both accept the `yca_…` bearer (member-scoped).
+- **Prose-only translation.** Claude's prose status lines auto-translate into members' languages; code/command output/diffs are left untranslated.
+- **Token lifecycle.** Per-room, hashed server-side, shown once, revocable (re-mint to rotate).
+- **Push (when it lands):** posting a message notifies other human members via push (spec 009) — agents don't get pushed.
 
 ---
 
 ## Migration checklist (bridge)
 
-- [ ] Remove the email→`yc_session` broker call and the `WXKANBAN_CHAT_EMAIL` / `WXKANBAN_CONSUMER_SECRET` usage from the post path.
-- [ ] Add `WXKANBAN_YAPPCHAT_TOKEN` and read it into the POST `Authorization: Bearer` header.
-- [ ] Drop the `🤖 Claude` content prefix (optional — leave it and it's stripped).
-- [ ] Drop `WXKANBAN_CHAT_DISPLAY_NAME` and `WXKANBAN_WS_URL` from the post path.
-- [ ] Verify a test post returns `201` with `"isagent": true` and appears on the left as **"🤖 Claude"** in the YappChat room (web + mobile).
+- [ ] Remove the email→`yc_session` broker call; delete `YAPPCHAT_CHAT_EMAIL`, `YAPPCHAT_WS_URL`, `WXKANBAN_CONSUMER_SECRET` from the post/read path.
+- [ ] Add `YAPPCHAT_TOKEN` (from Connect Claude) and send it as `Authorization: Bearer` on **both** GET and POST.
+- [ ] Poll `GET …/messages`; treat `isagent === false` messages newer than your cursor as commands.
+- [ ] Post output with `POST …/messages`; drop the `🤖 Claude` content prefix (optional).
+- [ ] Verify: a test POST returns `201` with `"isagent": true` and shows as **🤖 Claude** on the left; a message you type in the app shows up in the GET with `"isagent": false`.
