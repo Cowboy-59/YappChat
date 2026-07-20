@@ -11,3 +11,10 @@ web-build/
 
 # Env / secrets
 .env*.local
+
+# FCM/APNs service-account PRIVATE keys — NEVER commit.
+# (google-services.json is public client config and MAY be committed.)
+*service-account*.json
+fcm-*.json
+google-service-account*.json
+*-firebase-adminsdk-*.json

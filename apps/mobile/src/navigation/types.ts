@@ -4,6 +4,7 @@ import type { NavigatorScreenParams } from "@react-navigation/native";
 export type TabsParamList = {
   Chats: undefined;
   Contacts: undefined;
+  Communities: undefined;
 };
 
 /** Root stack: login (logged out), the tabs, and a pushed Chat screen. */
