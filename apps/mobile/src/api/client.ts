@@ -143,6 +143,18 @@ export const chats = {
   list: () => api.get<{ chats: Chat[]; unread?: Record<string, number> }>("/api/chats"),
 };
 
+export type CommunitySpace = { id: string; name: string; conversationid: string; unread: number };
+export type Community = { id: string; name: string; role?: string | null; spaces: CommunitySpace[] };
+
+export const nav = {
+  /**
+   * The caller's community → space tree (spec 068 shell endpoint), reused on mobile
+   * to populate the Communities tab. Each space carries a real conversationid the
+   * ChatScreen can open directly, plus its unread count.
+   */
+  list: () => api.get<{ communities: Community[] }>("/api/nav"),
+};
+
 export const contacts = {
   list: () => api.get<{ contacts: Contact[] }>("/api/contacts"),
   /**

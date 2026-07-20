@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { Platform } from "react-native";
 import Constants from "expo-constants";
 import * as Notifications from "expo-notifications";
-import { api, chats } from "@/api/client";
+import { api, chats, nav } from "@/api/client";
 
 /**
  * Message notifications (spec 008 / spec 009 seam).
@@ -109,10 +109,19 @@ export function useNewMessageNotifier(enabled: boolean): void {
 
     const poll = async () => {
       try {
-        const d = await chats.list();
+        // Watch both direct/group chats and community spaces so foreground local
+        // notifications fire for every conversation kind (background push is handled
+        // server-side by the message-send fanout, spec 009).
+        const [d, n] = await Promise.all([chats.list(), nav.list().catch(() => ({ communities: [] }))]);
         if (cancelled) return;
-        const unread = d.unread ?? {};
-        const names = new Map(d.chats.map((c) => [c.conversationid, c.name]));
+        const unread: Record<string, number> = { ...(d.unread ?? {}) };
+        const names = new Map<string, string>(d.chats.map((c) => [c.conversationid, c.name]));
+        for (const community of n.communities ?? []) {
+          for (const space of community.spaces) {
+            unread[space.conversationid] = space.unread;
+            names.set(space.conversationid, space.name);
+          }
+        }
         if (baseline.current) {
           for (const [cid, n] of Object.entries(unread)) {
             // Skip the chat you're currently viewing — no ping while you read it.

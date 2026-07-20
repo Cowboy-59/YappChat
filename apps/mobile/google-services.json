@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "50880673667",
+    "project_id": "yappchatt",
+    "storage_bucket": "yappchatt.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:50880673667:android:970ea996afe8cb8cbd68b6",
+        "android_client_info": {
+          "package_name": "com.wxperts.yappchat"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBEDD6ynarEtxyPmFGPIYbeNFZOmG7jHT8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

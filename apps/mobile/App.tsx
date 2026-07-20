@@ -11,6 +11,7 @@ import { useNewMessageNotifier } from "@/notifications";
 import { LoginScreen } from "@/screens/LoginScreen";
 import { ChatsScreen } from "@/screens/ChatsScreen";
 import { ContactsScreen } from "@/screens/ContactsScreen";
+import { CommunitiesScreen } from "@/screens/CommunitiesScreen";
 import { ChatScreen } from "@/screens/ChatScreen";
 import { SignOutButton } from "@/components/SignOutButton";
 import type { RootStackParamList, TabsParamList } from "@/navigation/types";
@@ -23,6 +24,7 @@ function HomeTabs() {
     <Tabs.Navigator screenOptions={{ headerShown: true, headerRight: () => <SignOutButton /> }}>
       <Tabs.Screen name="Chats" component={ChatsScreen} />
       <Tabs.Screen name="Contacts" component={ContactsScreen} />
+      <Tabs.Screen name="Communities" component={CommunitiesScreen} />
     </Tabs.Navigator>
   );
 }
