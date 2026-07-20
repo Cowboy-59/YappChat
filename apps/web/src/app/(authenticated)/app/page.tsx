@@ -7,6 +7,7 @@ import { DeviceSessionsList } from "@/components/auth/DeviceSessionsList";
 import { LinkedIdentitiesPanel } from "@/components/auth/LinkedIdentitiesPanel";
 import { SystemRoleManager } from "@/components/auth/SystemRoleManager";
 import { DashboardSpaceInvite } from "@/components/dashboard/DashboardSpaceInvite";
+import { AppDownloadCards } from "@/components/dashboard/AppDownloadCards";
 import { getActiveOrg, getSessionUser } from "@/lib/auth/session";
 import { isSystemStaff } from "@/lib/auth/shared";
 import { listMyCommunities, listMyInviteTargets } from "@/lib/communities/service";
@@ -62,6 +63,8 @@ export default async function DashboardHome() {
                 <div className="mt-0.5 text-xs text-muted-foreground">{l.desc}</div>
               </Link>
             ))}
+            {/* Native app install — Android QR (download) + iOS coming soon, right of Studio */}
+            <AppDownloadCards />
             {canInviteColleagues && (
               <Link href="/members" className="rounded-xl border border-border bg-card p-4 hover:bg-muted">
                 <div className="text-sm font-semibold">Invite a colleague</div>
