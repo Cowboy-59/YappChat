@@ -43,6 +43,23 @@ export async function putObject(
   return key;
 }
 
+const PUT_TTL_SECONDS = 15 * 60; // 15 min — long enough to upload a large file from the browser.
+
+/**
+ * A short-lived presigned PUT URL so the browser can upload a (possibly large)
+ * object DIRECTLY to S3 — the bytes never transit the app server. The client MUST
+ * send the same `Content-Type` it was signed with. Requires the bucket to allow
+ * cross-origin PUT from the app origin (S3 CORS).
+ */
+export async function presignPut(key: string, contentType: string): Promise<string> {
+  if (!BUCKET) throw new Error("S3_BUCKET not configured");
+  return getSignedUrl(
+    s3(),
+    new PutObjectCommand({ Bucket: BUCKET, Key: key, ContentType: contentType }),
+    { expiresIn: PUT_TTL_SECONDS },
+  );
+}
+
 /** Fetch a stored object's raw bytes (server-side; e.g. FR-019 doc indexing). */
 export async function getObjectBytes(key: string): Promise<Buffer> {
   if (!BUCKET) throw new Error("S3_BUCKET not configured");
