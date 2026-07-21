@@ -106,8 +106,8 @@ function Inner() {
   }
 
   return (
-    <div className="flex min-h-[70vh] flex-col">
-      <div className="mb-3 flex items-center justify-between gap-2">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="mb-3 flex shrink-0 items-center justify-between gap-2">
         <div className="truncate text-sm font-semibold text-foreground">{convId ? "Conversation" : "Messaging"}</div>
         <div className="flex items-center gap-1">
           <button onClick={newChannel} className={ghost}>
@@ -126,14 +126,14 @@ function Inner() {
         </div>
       </div>
 
-      <section className="flex flex-1 flex-col rounded-xl border border-border bg-card">
+      <section className="flex min-h-0 flex-1 flex-col rounded-xl border border-border bg-card">
         {!convId ? (
           <div className="flex flex-1 items-center justify-center p-8 text-center text-sm text-muted-foreground">
             Select a conversation from the sidebar, or create a channel to start.
           </div>
         ) : (
           <>
-            <div className="flex-1 space-y-3 overflow-y-auto p-4">
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
               {messages.map((m) => (
                 <div key={m.id} className={m.direction === "outbound" ? "text-right" : "text-left"}>
                   <span

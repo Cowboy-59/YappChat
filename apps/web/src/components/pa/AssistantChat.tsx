@@ -89,8 +89,8 @@ export function AssistantChat() {
   }
 
   return (
-    <div className="flex min-h-[70vh] gap-6">
-      <aside className="w-64 shrink-0">
+    <div className="flex h-[70vh] gap-6">
+      <aside className="w-64 shrink-0 overflow-y-auto">
         <button onClick={newSession} className={`${primary} mb-3 w-full`}>New chat</button>
         <div className="space-y-1">
           {sessions.map((s) => (
@@ -103,12 +103,12 @@ export function AssistantChat() {
         </div>
       </aside>
 
-      <section className="flex flex-1 flex-col rounded-xl border border-border bg-card">
+      <section className="flex min-h-0 flex-1 flex-col rounded-xl border border-border bg-card">
         {!activeId ? (
           <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Start or pick a chat.</div>
         ) : (
           <>
-            <div className="flex-1 space-y-4 overflow-y-auto p-5">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
               {messages.map((m) => (
                 <div key={m.id} className={m.role === "user" ? "text-right" : "text-left"}>
                   <span className={`inline-block max-w-[80%] whitespace-pre-wrap rounded-2xl px-4 py-2 text-sm ${m.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"}`}>

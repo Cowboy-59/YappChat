@@ -9,7 +9,7 @@ export default async function SupportPage() {
   const user = await getSessionUser();
   if (!user) redirect("/signin?return=/support");
   return (
-    <main className="flex flex-1 flex-col px-4 py-4">
+    <main className="flex min-h-0 flex-1 flex-col px-4 py-4">
       <RequesterSupport />
     </main>
   );
