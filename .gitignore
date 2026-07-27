@@ -52,3 +52,9 @@ Thumbs.db
 
 # Local history (VS Code Local History extension)
 .history/
+# wxKanban MCP registration (contains a project API token)
+.mcp.json
+
+# --- secrets: never commit (added 2026-07-26) ---
+.env.bak*
+client_secret_*.json
