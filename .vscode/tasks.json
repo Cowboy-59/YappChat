@@ -1,15 +1,17 @@
 {
   "version": "2.0.0",
+  "//": "presentation.reveal is deliberately \"silent\" on every folderOpen task: the terminal is created but NOT brought to the front, and VS Code still reveals it automatically if the task fails. \"always\" popped the panel on every project open — across a multi-project estate (and on every window reload) that reads as terminals stacking up endlessly. Field report: feedback 8a2b439a. Do not raise this back to \"always\" without re-reading that report. panel:\"dedicated\" is kept so repeat runs REUSE one terminal per task instead of spawning a new one each time.",
   "tasks": [
     {
-      "label": "Start Orchestrator HTTP Gateway",
+      "label": "wxKanban Kit — Install & Connect",
+      "detail": "SCOPE-095: on folder open, run the one-shot bootstrap — install deps, register the hosted MCP with Claude Code (.mcp.json), start the gateway, and install the Dev Cockpit. init.mjs is idempotent (it starts the gateway through scripts/setup-gateway.mjs, which skips the start when .wxai/kit-runtime.json records a live gateway; unchanged-.mcp.json short-circuit) so it is safe to run on every open, and it supersedes the standalone gateway-start / cockpit-install tasks so the gateway is never double-started (SCOPE-068 FR-007).",
       "type": "shell",
       "command": "node",
-      "args": ["wxkanban-agent/apps/command-gateway/bin/wxai-http.mjs"],
-      "isBackground": true,
+      "args": ["scripts/init.mjs"],
       "problemMatcher": [],
       "presentation": {
         "reveal": "silent",
+        "focus": false,
         "panel": "dedicated",
         "showReuseMessage": false
       },
@@ -22,7 +24,7 @@
       "args": ["scripts/check-kit-version.mjs"],
       "problemMatcher": [],
       "presentation": {
-        "reveal": "always",
+        "reveal": "silent",
         "focus": false,
         "panel": "dedicated",
         "showReuseMessage": false

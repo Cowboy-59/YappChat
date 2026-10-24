@@ -58,3 +58,15 @@ Thumbs.db
 # --- secrets: never commit (added 2026-07-26) ---
 .env.bak*
 client_secret_*.json
+# wxKanban Change Impact — per-developer state (SCOPE-137); never commit approvals
+.wxai/impact.json
+.wxai/impact-summary.md
+.wxai/impact-index/
+.wxai/impact-queue.jsonl
+.wxai/impact-queue.rejected.jsonl
+.wxai/impact-pending.json
+.wxai/impact-approvals.json
+.wxai/impact-crossings.jsonl
+.wxai/impact-crossings.checkpoint
+.wxai/impact-unattended.json
+.wxai/impact-mode.json

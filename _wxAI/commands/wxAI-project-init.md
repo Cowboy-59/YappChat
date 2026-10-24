@@ -50,30 +50,51 @@ Before fetching project data, verify and configure the developer environment. Ru
 
 #### 2.1 — MCP: wxKanban Server
 
-Check `.claude/settings.json` (workspace root) for the `wxkanban-mcp` entry.
+Claude Code loads project-scoped MCP servers from **`.mcp.json` at the workspace root** — **not** `.claude/settings.json`. The MCP is **hosted** (spec 028); there is no local server to spawn. It speaks the MCP **Streamable HTTP transport** (`POST /mcp`, plain-JSON request/response — proxy-friendly) and authenticates with a bearer token. The server derives your project scope **from the token**, so no project-id header is needed. (The older **SSE** transport at `/sse` still works for existing setups, but `/mcp` is the default — it survives TLS-inspection proxies that break long-lived SSE; see the proxy note below.)
 
-**If missing**, add it. The kit ships with the HTTP MCP transport (stdio was removed in v0.3.2 — spec 019 R17). Read the assigned port from `.wxkanban-project.json` `mcpHttpUrl` (auto-allocated at init per spec 019 R18 — typically `3002`, may differ if that port was taken):
+A fresh kit download already ships a **pre-filled `.mcp.json`** at the workspace root (injected by the download server), so the project is usually connected before you run anything. **`scripts/init.mjs` writes/refreshes it** — and runs automatically when VS Code opens the folder — after validating your token, reading the endpoint from `.wxai/project.json` `kit.mcpBaseUrl` (defaults to `https://mcp.wxperts.com`) and the token from `kit.apiToken` / `.env`. It also **gitignores `.mcp.json`**, because the file holds the token. To write it by hand, the block is:
 
 ```json
 {
   "mcpServers": {
     "wxkanban": {
       "type": "http",
-      "command": "node",
-      "args": ["mcp-server/dist/index-http.js"],
-      "env": {
-        "MCP_HTTP_PORT": "<port from .wxkanban-project.json>",
-        "API_KEY": "<from .env>",
-        "WXKANBAN_PROJECT_ID": "<from .env>"
+      "url": "<mcpBaseUrl>/mcp",
+      "headers": {
+        "Authorization": "Bearer <paste the literal token value>"
       }
     }
   }
 }
 ```
 
-If `.claude/settings.json` exists but has other entries, merge — do not overwrite the file.
+> **⚠ Paste the actual token string** (the literal value copied out of `.env`) into the header — **not** a `${WXKANBAN_API_TOKEN}` placeholder. Claude Code does **not** expand `${...}` from `.env`, so a placeholder sends an empty `Authorization` header and the server rejects the connection. `scripts/init.mjs` inlines the literal token for you automatically; this only bites when you hand-edit. It is the #1 hand-config mistake.
 
-Report: `✓ MCP wxKanban registered (port <n>)` or `⚠ Already present`.
+**After it is written, restart Claude Code and approve the `wxkanban` server** — project-scoped MCP servers prompt for a one-time approval (run `/mcp` to approve if you miss it). MCP servers connect only at startup, never mid-session.
+
+> Transport options: **`type: "http"` → `/mcp`** is the default (proxy-friendly request/response). **`type: "sse"` → `/sse`** still works (legacy). For locked-down proxies that break both, use the **stdio bridge** below. Pre-028 kits ran a local MCP on a port and older docs showed `transport: "https"` + an `env` block — both are wrong for the hosted server.
+
+If `.mcp.json` exists with other entries, merge — do not overwrite the file.
+
+Report: `✓ MCP wxKanban registered (<mcpBaseUrl>/mcp)` or `⚠ Already present`.
+
+**Behind a corporate proxy that blocks the connection?** The default `/mcp` transport is short request/response, so it already survives most TLS-inspection proxies (this is exactly why it's preferred over the legacy long-lived `/sse` stream, which such proxies buffer and break). If even `/mcp` is blocked — `curl <mcpBaseUrl>/health` returns **200** but the `wxkanban` server still won't connect — use the **local stdio bridge** instead. It speaks MCP to Claude Code over stdio (no network on the editor side) and reaches the hosted MCP only via short request/response calls (`/tools` + `/call`) — the exact calls that already pass the proxy. No IT changes needed; it works wherever `/health` returns 200. `.mcp.json` block:
+
+```json
+{
+  "mcpServers": {
+    "wxkanban": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["wxkanban-agent/apps/command-gateway/bin/wxai-mcp-stdio.mjs"],
+      "env": {
+        "WXKANBAN_MCP_BASE_URL": "<mcpBaseUrl>",
+        "WXKANBAN_API_TOKEN": "<WXKANBAN_API_TOKEN from .env>"
+      }
+    }
+  }
+}
+```
 
 ---
 
