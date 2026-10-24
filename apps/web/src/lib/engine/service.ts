@@ -21,6 +21,8 @@ import { resolveAvatarUrl } from "../account/avatar-resolve";
 import { scopes, WSEventType } from "../ws/events";
 import { EngineError } from "./errors";
 import { sendViaPlugin, startAccount } from "./gateway";
+// [SCOPE 093 / T006] retired rooms take no new message on any posting path.
+import { assertConversationOpen } from "../consumer/retired";
 import type { NormalizedMessage } from "./types";
 
 /**
@@ -246,6 +248,8 @@ export async function sendMessage(input: {
   if (!input.content.trim() && media.length === 0) throw new EngineError("content_required", 400);
 
   const conversation = await loadConversation(input.conversationid);
+  // MODIFIED-BY: [SCOPE 093 / T006] — refuse a retired room (web session + agent yca_ token path).
+  assertConversationOpen(conversation);
   const channel = await loadChannel(conversation.channelid);
 
   // DM gate: in a 1:1 (`person`) conversation, only accepted contacts may
@@ -346,6 +350,8 @@ export async function postSystemMessage(input: {
   if (!db) throw new EngineError("db_unavailable", 503);
   if (!input.content.trim()) throw new EngineError("content_required", 400);
   const conversation = await loadConversation(input.conversationid);
+  // MODIFIED-BY: [SCOPE 093 / T006] — refuse a retired room (system / bot messages).
+  assertConversationOpen(conversation);
 
   const id = uuidv7();
   await db.insert(messages).values({
@@ -456,6 +462,16 @@ export async function ingestInbound(
       .where(and(eq(messages.channelid, channelid), eq(messages.platformmessageid, input.platformmessageid)))
       .limit(1);
     if (existing) return normalize(existing, await resolveAuthorName(existing.authorid), await presignAttachments(existing.mediaurl));
+  }
+
+  // MODIFIED-BY: [SCOPE 093 / T006] — refuse a retired room (inbound ingest path).
+  if (input.conversationid) {
+    const [target] = await db
+      .select({ retiredat: conversations.retiredat })
+      .from(conversations)
+      .where(eq(conversations.id, input.conversationid))
+      .limit(1);
+    if (target) assertConversationOpen(target);
   }
 
   const id = uuidv7();

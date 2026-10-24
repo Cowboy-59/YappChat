@@ -12,7 +12,7 @@ export default async function SupportAgentPage() {
   const org = await getActiveOrg(user.id);
   if (!org) return <main className="px-4 py-4 text-sm text-muted-foreground">No active organization.</main>;
   return (
-    <main className="flex flex-1 flex-col px-4 py-4">
+    <main className="flex min-h-0 flex-1 flex-col px-4 py-4">
       <AgentSupport orgid={org.id} />
     </main>
   );

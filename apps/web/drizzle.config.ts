@@ -14,6 +14,7 @@ export default defineConfig({
     "./src/lib/db/support-schema.ts",
     "./src/lib/db/contacts-schema.ts",
     "./src/lib/db/remotecontrol-schema.ts",
+    "./src/lib/db/training-schema.ts",
   ],
   out: "./drizzle",
   dbCredentials: {

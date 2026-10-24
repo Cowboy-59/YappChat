@@ -6,6 +6,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import {
   Users,
   MonitorPlay,
+  GraduationCap,
   Hash,
   ChevronRight,
   Plus,
@@ -182,6 +183,13 @@ export function AppSidebar() {
               label="Presentations"
               icon={MonitorPlay}
               active={pathname.startsWith("/presentations")}
+            />
+
+            <TopLink
+              href="/training"
+              label="Training"
+              icon={GraduationCap}
+              active={pathname.startsWith("/training")}
             />
           </nav>
         </div>

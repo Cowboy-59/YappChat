@@ -19,7 +19,10 @@ WORKDIR /app
 # Deps first for layer caching. Installed BEFORE NODE_ENV=production so the build
 # toolchain (next, typescript, tailwind) is present for `next build`.
 COPY package.json ./
-RUN npm install --no-audit --no-fund
+# --legacy-peer-deps: since vitest 4.1.12 (2026-10-15) npm 10.9 crashes resolving
+# vitest's optional peer set ("reading 'edgesOut'"). The only required peer it
+# skips is @types/dom-mediacapture-record (types-only; skipLibCheck is on).
+RUN npm install --no-audit --no-fund --legacy-peer-deps
 
 # App source + the config files the build reads. .env* is excluded via
 # .dockerignore — configuration comes from the ECS task environment instead.

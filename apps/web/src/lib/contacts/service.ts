@@ -15,6 +15,8 @@ import { getSiteUrl } from "../site";
 import { EngineError } from "../engine/errors";
 import { isUniqueViolation } from "../db/errors";
 import { guardContactFloodOrThrow } from "./flood";
+// [SCOPE 093 / T006] the shared retired-room list predicate.
+import { isRetiredHiddenFor } from "../consumer/retired";
 
 /**
  * Contacts (the "Individuals" context) + direct/group chats.
@@ -604,12 +606,16 @@ export async function listMyChats(
       // Spec 090 — the caller's per-user grouping placement for this room.
       groupingid: conversationmembers.groupingid,
       position: conversationmembers.position,
+      // MODIFIED-BY: [SCOPE 093 / T006] — retired rooms are hidden from everyone but their owner.
+      retiredat: conversations.retiredat,
+      role: conversationmembers.role,
     })
     .from(conversationmembers)
     .innerJoin(conversations, eq(conversationmembers.conversationid, conversations.id))
     .where(eq(conversationmembers.userid, userid));
   const chats = rows
     .filter((r) => r.kind === "person" || r.kind === "group")
+    .filter((r) => !isRetiredHiddenFor(r))
     .sort((a, b) => (b.lastmessageat?.getTime() ?? 0) - (a.lastmessageat?.getTime() ?? 0));
 
   // Human member counts in one batched query → detect a "solo" room (spec 090

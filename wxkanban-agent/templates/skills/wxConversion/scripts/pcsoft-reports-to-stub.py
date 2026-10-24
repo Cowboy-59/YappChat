@@ -16,13 +16,14 @@ Usage:
     python scripts/pcsoft-reports-to-stub.py --src pre-convert --out rebuild/scopes
 """
 import argparse
+import sys
 import glob
 import os
 import re
 
 import os as _wmos, sys as _wmsys
 _wmsys.path.insert(0, _wmos.path.dirname(_wmos.path.abspath(__file__)))
-from wxkanban_watermark import stamp_markdown
+import wxconv_redact as rd  # noqa: E402 - the watermark stamp now lives inside rd.write_text()
 
 LABELS = {
     "Logical report name", "Physical report name", "Type", "Data source type",
@@ -102,7 +103,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--src", default="pre-convert")
     ap.add_argument("--out", default="rebuild/scopes")
+    rd.add_redaction_args(ap, scan=False)
     args = ap.parse_args()
+
+    # rebuild/scopes/_redactions.md is shared with the queries and procedures stages: continue it
+    # instead of overwriting it (wxKanban f6df3914).
+    state = rd.RedactionState.resume(os.path.join(args.out, rd.SIDECAR_NAME),
+                                     os.path.join(args.src, rd.SIDECAR_NAME))
 
     files = sorted(glob.glob(os.path.join(args.src, "*.report.md")))
     reps = [parse(f) for f in files]
@@ -141,10 +148,17 @@ def main():
                   "port their logic to the data-prep layer, not the React view._")
         md.append("\n---\n")
     out_path = os.path.join(args.out, "RPT-reports-stub.md")
-    open(out_path, "w", encoding="utf-8").write(
-        stamp_markdown("\n".join(md) + "\n", kind="converted", generator="wxConversion"))
+    # [SCOPE 125 / T009] Through the shared funnel (FR-007): redacts, accumulates findings, and
+    # stamps the watermark on .md — so the manual stamp_markdown call is gone, not duplicated.
+    rd.write_text(out_path, "\n".join(md) + "\n", state)
     print(f"reports={len(reps)}  -> {out_path}")
+
+    sidecar_path = os.path.join(args.out, rd.SIDECAR_NAME)
+    if rd.ledger_changed(state):
+        rd.write_text(sidecar_path, rd.render_sidecar(state), state)
+    print(rd.summary_line(state, sidecar_path))
+    return rd.exit_code(len(state.findings), args.fail_on_secrets)
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

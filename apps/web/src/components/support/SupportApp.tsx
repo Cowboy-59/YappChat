@@ -58,8 +58,8 @@ function ChatPanel({ conversationid }: { conversationid: string }) {
   }
 
   return (
-    <section className="flex flex-1 flex-col rounded-xl border border-border bg-card">
-      <div className="flex-1 space-y-3 overflow-y-auto p-4">
+    <section className="flex min-h-0 flex-1 flex-col rounded-xl border border-border bg-card">
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
         {messages.map((m) => (
           <div key={m.id} className={m.direction === "outbound" ? "text-right" : "text-left"}>
             <span
@@ -116,8 +116,8 @@ function RequesterInner({ defaultAppKey }: { defaultAppKey: string }) {
 
   if (conversationid) {
     return (
-      <div className="flex min-h-[70vh] flex-col">
-        <div className="mb-3 text-sm font-semibold text-foreground">Support — {appkey}</div>
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="mb-3 shrink-0 text-sm font-semibold text-foreground">Support — {appkey}</div>
         <ChatPanel conversationid={conversationid} />
       </div>
     );
@@ -183,8 +183,8 @@ function AgentInner({ orgid }: { orgid: string }) {
   }
 
   return (
-    <div className="flex min-h-[70vh] gap-4">
-      <aside className="w-64 shrink-0 space-y-2">
+    <div className="flex min-h-0 flex-1 gap-4">
+      <aside className="w-64 shrink-0 space-y-2 overflow-y-auto">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold">Support queue</h2>
           <button onClick={() => void refresh()} className={ghost}>
@@ -206,7 +206,7 @@ function AgentInner({ orgid }: { orgid: string }) {
           </div>
         ))}
       </aside>
-      <div className="flex flex-1 flex-col">
+      <div className="flex min-h-0 flex-1 flex-col">
         {active ? (
           <ChatPanel conversationid={active} />
         ) : (

@@ -94,6 +94,9 @@ export const conversations = ycSchema.table(
     externalid: text("externalid"), // platform thread/room id
     lastmessageat: timestamp("lastmessageat", { withTimezone: true }).notNull().defaultNow(),
     createdat: timestamp("createdat", { withTimezone: true }).notNull().defaultNow(),
+    // MODIFIED-BY: [SCOPE 093 / T006] — retired-room state (migration 0031). NULL = active;
+    // set = hidden from members' lists (owner keeps it) and closed to new messages.
+    retiredat: timestamp("retiredat", { withTimezone: true }),
   },
   (t) => [index("conversations_channelid_idx").on(t.channelid)],
 );

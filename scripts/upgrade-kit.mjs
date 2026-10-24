@@ -23,7 +23,9 @@
  */
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import tls from 'node:tls';
 import crypto from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -56,6 +58,24 @@ function log(level, msg) {
 function die(msg) {
   log('err', msg);
   process.exit(1);
+}
+
+// Trust the OS certificate store in addition to Node's bundled CA list, so the
+// upgrade reaches wxKanban behind a corporate TLS-inspection proxy (Cisco
+// Secure Access, Zscaler, …) instead of failing the handshake and falling back
+// to GitHub. In-process equivalent of --use-system-ca (Node 24+); feature-
+// detected, never throws. See BUG-REPORT-kit-dbpush-tls-and-packaging.md.
+function trustSystemCertificates() {
+  try {
+    if (typeof tls.setDefaultCACertificates !== 'function' ||
+        typeof tls.getCACertificates !== 'function') return;
+    const system = tls.getCACertificates('system');
+    if (Array.isArray(system) && system.length > 0) {
+      tls.setDefaultCACertificates([...tls.getCACertificates('bundled'), ...system]);
+    }
+  } catch {
+    /* fall back to default trust silently */
+  }
 }
 
 function readProjectConfig() {
@@ -107,6 +127,18 @@ function stopService(pidFileName, label) {
   try { fs.unlinkSync(pidFile); } catch { /* ignore */ }
 }
 
+// SCOPE-068 FR-008: a gateway started by kit-start, or by init.mjs since FR-007,
+// is recorded only in .wxai/kit-runtime.json. Stopping just the legacy pid file
+// left that gateway serving the old kit's code after the upgrade, and the init
+// run that follows started a second one. kit-stop.mjs stops every service the
+// runtime file records, waiting for a clean exit before it force-kills.
+function stopRuntimeServices() {
+  const kitStop = path.join(root, 'scripts', 'kit-stop.mjs');
+  if (!fs.existsSync(kitStop)) return;
+  const r = spawnSync(process.execPath, [kitStop], { cwd: root, stdio: 'inherit', windowsHide: true });
+  if (r.status !== 0) log('warn', `kit-stop exited with code ${r.status ?? 'unknown'}; continuing`);
+}
+
 // [SPEC 019 R15 AC#5 / SPEC 028 T054] v1.1.0 legacy cleanup.
 // Pre-v1.1.0 kits shipped a local mcp-server/ that tried to open a Postgres
 // connection from the consumer (BUG-20). After spec 028, the MCP runs at
@@ -121,8 +153,16 @@ function isPreV110(currentVersion) {
   return major < 1 || (major === 1 && minor < 1);
 }
 
-function cleanupLegacyMcpIfNeeded(currentVersion) {
-  if (!isPreV110(currentVersion)) return;
+function cleanupLegacyMcpIfNeeded(currentVersion, { dryRun = false } = {}) {
+  if (!isPreV110(currentVersion)) return [];
+  if (dryRun) {
+    return [
+      'mcp-server',
+      'scripts/setup-mcp.mjs',
+      'scripts/mcp-health-check.mjs',
+      '.mcp-server.pid',
+    ].filter(rel => fs.existsSync(path.join(root, rel)));
+  }
   log('info', `Pre-v1.1.0 install detected (${currentVersion}); removing legacy local-MCP files`);
   const targets = [
     'mcp-server',
@@ -145,6 +185,93 @@ function cleanupLegacyMcpIfNeeded(currentVersion) {
   if (removed > 0) {
     log('ok', `Legacy cleanup complete: ${removed} path(s) removed`);
   }
+  return targets.filter(rel => !fs.existsSync(path.join(root, rel)));
+}
+
+// Post-extract cleanup of files the new kit RENAMED or REMOVED. The upgrade
+// overlays the archive (it never deletes), so stale files linger without this.
+// Run AFTER extraction so the replacements are already in place.
+// (1) Renamed/removed in the from-PDF cutover: the source-based wxConversion
+// analyst skill and the interim wxConversion*FromPDF docs/dirs (the from-PDF
+// flow is now plain /wxConversion + /wxConversionScope).
+// Module-level so the pre-upgrade snapshot (T003) can cover deletions too — a
+// file this removes is as gone as one the extract overwrites.
+const STALE_RENAMED = [
+  '_wxAI/skills/wxConversion-analyst.md',
+  'wxkanban-agent/templates/skills/wxConversion-analyst.md',
+  '_wxAI/commands/wxConversionFromPDF.md',
+  '_wxAI/commands/wxConversionScopeFromPDF.md',
+  '.claude/commands/wxConversionFromPDF.md',
+  '.claude/commands/wxConversionScopeFromPDF.md',
+  '_wxAI/skills/wxConversionFromPDF',
+  '_wxAI/skills/wxConversionScopeFromPDF',
+  '.claude/skills/wxConversionFromPDF',
+  '.claude/skills/wxConversionScopeFromPDF',
+  '.claude/skills/wxConversion',
+  '.claude/skills/wxConversionScope',
+  'wxkanban-agent/templates/skills/wxConversionFromPDF',
+  'wxkanban-agent/templates/skills/wxConversionScopeFromPDF',
+];
+
+// (2) Raw TypeScript source — only prune once the kit actually ships the
+// compiled bundle (dist/cli.cjs present after extract).
+const STALE_SOURCE_TREES = [
+  'wxkanban-agent/core',
+  'wxkanban-agent/services',
+  'wxkanban-agent/workers',
+  'wxkanban-agent/adapters',
+  'wxkanban-agent/apps/command-gateway/src',
+  'wxkanban-agent/dbpush.ts',
+];
+
+// `willWrite` is the list of paths reconcile is about to place in the root (or
+// just placed there). The question this function asks is "does the path exist
+// AFTER the upgrade", and before T013 it asked the root on its own — correct in
+// a real run, where the overlay had already landed, and wrong in a dry run,
+// where it had not. The visible cost was the dist cutover: an archive that ships
+// `wxkanban-agent/dist/cli.cjs` flips `distPresent` and takes SIX source trees
+// with it, none of which the preview mentioned.
+
+function cleanupStaleAfterExtract({ dryRun = false, willWrite = [] } = {}) {
+  const renamed = STALE_RENAMED;
+  const incoming = new Set(willWrite);
+  const existsAfter = (rel) => incoming.has(rel) || fs.existsSync(path.join(root, rel));
+
+  // Until distribution flips to dist-only this stays a no-op, so it's safe to ship now.
+  const distPresent = existsAfter('wxkanban-agent/dist/cli.cjs');
+  const sourceTrees = distPresent
+    ? [
+        'wxkanban-agent/core',
+        'wxkanban-agent/services',
+        'wxkanban-agent/workers',
+        'wxkanban-agent/adapters',
+        'wxkanban-agent/apps/command-gateway/src',
+        'wxkanban-agent/dbpush.ts',
+      ]
+    : [];
+
+  // [SPEC 121 / T008] Deletions are reported through the T007 change manifest
+  // rather than announced here and forgotten. `dryRun` lists without removing.
+  const removed = [];
+  for (const rel of [...renamed, ...sourceTrees]) {
+    const abs = path.join(root, rel);
+    if (!existsAfter(rel)) continue;
+    if (dryRun) {
+      removed.push(rel);
+      continue;
+    }
+    if (!fs.existsSync(abs)) continue;
+    try {
+      fs.rmSync(abs, { recursive: true, force: true });
+      removed.push(rel);
+    } catch (err) {
+      log('warn', `  could not remove ${rel}: ${err.message}`);
+    }
+  }
+  if (removed.length > 0 && distPresent) {
+    log('info', 'Stale cleanup included raw source — the kit now runs from dist/');
+  }
+  return removed;
 }
 
 function platform() {
@@ -253,18 +380,388 @@ function resolveTarBinary() {
   return 'tar';
 }
 
-function extractArchive(archivePath) {
+// ─── [SPEC 121 / T003] Pre-upgrade snapshot ──────────────────────────────────
+//
+// The upgrade overlays an archive onto a live project. Until T001/T002 land, it
+// cannot tell a pristine kit file from one the consumer edited, so it overwrites
+// both. The snapshot does not prevent that — it makes it recoverable, which is
+// the difference between an annoyance and the lost work reported from eight
+// projects. Unconditional and on every path: an upgrade that proceeds without
+// one is exactly the upgrade people lost files to.
+
+// [SPEC 121 / T019] The snapshot used to land as an EXPANDED directory tree at
+// .wxai/kit-upgrade-snapshot-<stamp>/. That put a second, byte-identical copy of
+// every kit file — 50 `*.test.ts` among them — inside the project, where any
+// glob-driven tool finds it: vitest/jest discovery, `tsc` includes, eslint and
+// biome sweeps, ripgrep. Reported from the field as a known-failing kit test that
+// silently doubled to two failing files on any day an upgrade had run, with
+// nothing to say the second was a backup copy rather than a new regression.
+// `.wxai/` being a dot-directory does not help — vitest globs with `dot: true`.
+//
+// So the durable artifact is now a single ARCHIVE file, which no source-file glob
+// can match. The expanded copy still exists for the length of the run — T005's
+// package.json merge reads it — but it is staged in the OS temp dir, outside the
+// project, and removed when the run ends.
+const SNAPSHOT_PREFIX = 'kit-upgrade-snapshot-';
+const SNAPSHOT_RETAIN = 2;
+// zip on Windows: Explorer opens it natively and Expand-Archive restores it, so a
+// hand recovery needs no extra tooling. bsdtar writes both formats.
+const SNAPSHOT_EXT = process.platform === 'win32' ? '.zip' : '.tar.gz';
+const STAGING_PREFIX = 'kit-staging-';
+
+/**
+ * Every path the archive carries, so the snapshot covers what will actually be
+ * written rather than a hand-maintained guess that drifts from the archive.
+ * Returns null when the listing fails — the caller treats that as fatal.
+ */
+function listArchiveEntries(archivePath) {
+  const isZip = archivePath.endsWith('.zip');
+
+  if (isZip && process.platform === 'win32') {
+    const ps = spawnSync(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-Command',
+        'Add-Type -AssemblyName System.IO.Compression.FileSystem; ' +
+        `$z=[IO.Compression.ZipFile]::OpenRead('${archivePath}'); ` +
+        'try { $z.Entries | ForEach-Object { $_.FullName } } finally { $z.Dispose() }'],
+      { encoding: 'utf8', windowsHide: true }
+    );
+    if (ps.status !== 0) return null;
+    return ps.stdout.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+  }
+
+  const tarBin = resolveTarBinary();
+  const result = spawnSync(tarBin, isZip ? ['-tf', archivePath] : ['-tzf', archivePath], {
+    encoding: 'utf8',
+    windowsHide: true,
+  });
+  if (result.status !== 0) return null;
+  return result.stdout.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+}
+
+function snapshotBeforeUpgrade(archivePath, { dryRun = false } = {}) {
+  const entries = listArchiveEntries(archivePath);
+  if (!entries || entries.length === 0) {
+    die(
+      'Could not read the upgrade archive to snapshot the files it would overwrite.\n' +
+      '  Refusing to extract unprotected — this upgrade overwrites project files in place.\n' +
+      '  Back up the project and re-run, or report this archive as unreadable.'
+    );
+  }
+
+  // Deletions count as writes. The dist-only prune only fires when the compiled
+  // bundle is present, which the archive listing tells us before we extract.
+  const archiveHasDist = entries.some(e => e.replace(/\\/g, '/') === 'wxkanban-agent/dist/cli.cjs');
+  const targets = new Set();
+  for (const entry of entries) {
+    const rel = entry.replace(/\\/g, '/');
+    if (!rel || rel.endsWith('/')) continue; // directory entry
+    targets.add(rel);
+  }
+  for (const rel of STALE_RENAMED) targets.add(rel);
+  if (archiveHasDist || fs.existsSync(path.join(root, 'wxkanban-agent', 'dist', 'cli.cjs'))) {
+    for (const rel of STALE_SOURCE_TREES) targets.add(rel);
+  }
+
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+
+  if (dryRun) {
+    // The snapshot is a WRITE like any other, so a preview counts it and stops.
+    // `dir: root` is what makes the merge preview correct: with nothing extracted
+    // over the project, the live tree still IS the pre-upgrade state.
+    const would = [...targets].filter(rel => fs.existsSync(path.join(root, rel)));
+    return { dir: root, archive: null, saved: would.length, planned: true, staged: false };
+  }
+
+  // [SPEC 121 / T019] Stage outside the project. mkdtemp, not a fixed name, so
+  // two upgrades racing on the same tree cannot stage into each other.
+  let stage;
+  let saved = 0;
+  try {
+    stage = fs.mkdtempSync(path.join(os.tmpdir(), 'wxkanban-kit-snapshot-'));
+    for (const rel of targets) {
+      const abs = path.join(root, rel);
+      if (!fs.existsSync(abs)) continue; // new file — nothing of the consumer's to lose
+      const dest = path.join(stage, rel);
+      if (fs.statSync(abs).isDirectory()) {
+        fs.cpSync(abs, dest, { recursive: true });
+      } else {
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
+        fs.copyFileSync(abs, dest);
+      }
+      saved++;
+    }
+  } catch (err) {
+    if (stage) { try { fs.rmSync(stage, { recursive: true, force: true }); } catch { /* ignore */ } }
+    die(
+      `Pre-upgrade snapshot failed: ${err.message}\n` +
+      '  Aborting before anything is written. Nothing has been changed.\n' +
+      '  Free up disk space or fix permissions on the temp directory and re-run.'
+    );
+  }
+
+  fs.mkdirSync(path.join(root, '.wxai'), { recursive: true });
+  const archive = path.join(root, '.wxai', `${SNAPSHOT_PREFIX}${stamp}${SNAPSHOT_EXT}`);
+
+  if (archiveDirectory(stage, archive)) {
+    log('ok', `Snapshot saved (${saved} existing path(s))`);
+    log('info', `  ${archive}`);
+    return { dir: stage, archive, saved, staged: true };
+  }
+
+  // No archiver, or it failed. Protection outranks tidiness: fall back to the
+  // expanded directory rather than extracting unprotected, and say plainly why
+  // it should not be left lying in the project.
+  const legacy = path.join(root, '.wxai', `${SNAPSHOT_PREFIX}${stamp}`);
+  try {
+    fs.cpSync(stage, legacy, { recursive: true });
+  } catch (err) {
+    try { fs.rmSync(stage, { recursive: true, force: true }); } catch { /* ignore */ }
+    die(
+      `Pre-upgrade snapshot failed: ${err.message}\n` +
+      '  Aborting before anything is written. Nothing has been changed.\n' +
+      '  Free up disk space or fix permissions on .wxai/ and re-run.'
+    );
+  }
+  log('ok', `Snapshot saved (${saved} existing path(s))`);
+  log('warn', 'Could not archive it — saved as a plain directory instead:');
+  log('warn', `  ${legacy}`);
+  log('warn', '  Delete it once the upgrade looks right. An expanded copy of the kit inside');
+  log('warn', '  the project is picked up by test-file globs, tsc includes and lint sweeps,');
+  log('warn', '  which makes one failing test look like two.');
+  return { dir: stage, archive: legacy, saved, staged: true };
+}
+
+/**
+ * Pack `sourceDir` into `archivePath`. Returns false — never throws — when no
+ * archiver is available, so the caller can fall back rather than fail the upgrade.
+ */
+function archiveDirectory(sourceDir, archivePath) {
+  const tarBin = resolveTarBinary();
+  // `-a` picks the format from the extension, so Windows gets a real zip.
+  const args = archivePath.endsWith('.zip')
+    ? ['-a', '-cf', archivePath, '.']
+    : ['-czf', archivePath, '.'];
+  let result;
+  try {
+    // cwd rather than -C: bsdtar reads a drive-letter -C argument as a remote host.
+    result = spawnSync(tarBin, args, { cwd: sourceDir, stdio: 'ignore', windowsHide: true });
+  } catch {
+    return false;
+  }
+  if (result.status === 0 && fs.existsSync(archivePath)) return true;
+  try { fs.rmSync(archivePath, { force: true }); } catch { /* ignore */ }
+  return false;
+}
+
+/** Keep the current snapshot plus one previous; older ones are pruned. */
+function pruneSnapshots(keep, { dryRun = false } = {}) {
+  const base = path.join(root, '.wxai');
+  let entries;
+  try {
+    entries = fs.readdirSync(base, { withFileTypes: true });
+  } catch {
+    return;
+  }
+
+  // Archives and pre-T019 expanded directories share the prefix and the same
+  // fixed-width ISO stamp, so one lexical sort orders both together and a
+  // consumer upgrading from an older kit ages its legacy directories out.
+  const snapshots = entries
+    .filter(e => e.name.startsWith(SNAPSHOT_PREFIX))
+    .map(e => e.name)
+    .sort()
+    .reverse();
+
+  // A run that was killed or crashed leaves .wxai/kit-staging-<ms>/ behind: a
+  // full expanded copy of the kit inside the project, the same discovery hazard
+  // the archived snapshot exists to avoid. Nothing reads it after the run, so
+  // any that survive to here are orphans.
+  const orphanStaging = entries
+    .filter(e => e.isDirectory() && e.name.startsWith(STAGING_PREFIX))
+    .map(e => e.name);
+
+  if (dryRun) {
+    // The real run creates one snapshot before it prunes, so of the entries that
+    // exist now it keeps one fewer. Slicing at SNAPSHOT_RETAIN would under-count by one.
+    const stale = snapshots.slice(Math.max(0, SNAPSHOT_RETAIN - 1));
+    if (stale.length > 0) log('info', `${stale.length} old snapshot(s) would be pruned`);
+    if (orphanStaging.length > 0) {
+      log('info', `${orphanStaging.length} abandoned staging director(ies) would be removed`);
+    }
+    return;
+  }
+
+  for (const name of [...snapshots.slice(SNAPSHOT_RETAIN), ...orphanStaging]) {
+    const abs = path.join(base, name);
+    if (abs === keep) continue;
+    try {
+      fs.rmSync(abs, { recursive: true, force: true });
+    } catch {
+      /* a snapshot we cannot prune is not worth failing an upgrade over */
+    }
+  }
+
+  // Retained but still expanded: pre-T019, or this run's archiver fallback.
+  const retainedDirs = snapshots
+    .slice(0, SNAPSHOT_RETAIN)
+    .filter(name => {
+      try { return fs.statSync(path.join(base, name)).isDirectory(); } catch { return false; }
+    });
+  if (retainedDirs.length > 0) {
+    log('warn', `${retainedDirs.length} snapshot(s) are still expanded directories under .wxai/:`);
+    for (const name of retainedDirs) log('warn', `  .wxai/${name}`);
+    log('warn', '  Test-file globs, tsc includes and lint sweeps pick these up as if they were');
+    log('warn', '  project sources. Delete them once you no longer need the restore point.');
+  }
+}
+
+// ─── [SPEC 121 / T005] Merge package.json instead of overwriting it ───────────
+//
+// The archive carries the kit's own package.json. The loss it causes is latent:
+// node_modules survives an overwrite, so typecheck, tests and build all stay
+// green until some later `npm install` prunes the tree and the project breaks
+// pointing at the wrong change. Merge from the snapshot copy taken before
+// extraction, so every consumer key survives.
+//
+// THE KIT HALF DOES NOT COME FROM THE PROJECT ROOT. It used to, and that was
+// only ever true on the no-manifest overwrite path — the FIRST upgrade after
+// SPEC-121 shipped. On every upgrade after that, reconcileStaging classifies a
+// customized package.json as `modified` and deliberately does NOT write the
+// kit's copy to the root; it leaves a `package.json.kit-new` sidecar instead.
+// So `before` and the root file were the same bytes, the merge found nothing of
+// the kit's to apply, and returned null without a word. Kit-owned dependency
+// bumps and newly shipped scripts stopped arriving, silently, for every consumer
+// past their first upgrade. The kit's copy exists only inside the staging tree,
+// which is why `kitDir` is passed and why the call now happens before staging is
+// removed. `root` stays the default so the overwrite path is unchanged.
+
+function mergePackageJson(snapshotDir, kitDir = root, { dryRun = false } = {}) {
+  const beforePath = path.join(snapshotDir, 'package.json');
+  const livePath = path.join(root, 'package.json');
+  const kitPath = path.join(kitDir, 'package.json');
+  // Absent from the snapshot ⇒ the archive did not carry it ⇒ nothing was overwritten.
+  if (!fs.existsSync(beforePath) || !fs.existsSync(livePath) || !fs.existsSync(kitPath)) return null;
+
+  let before;
+  let kit;
+  try {
+    before = JSON.parse(fs.readFileSync(beforePath, 'utf8'));
+    kit = JSON.parse(fs.readFileSync(kitPath, 'utf8'));
+  } catch (err) {
+    log('warn', `package.json merge skipped — could not parse: ${err.message}`);
+    log('warn', `  your original is preserved at ${beforePath}`);
+    return null;
+  }
+
+  const notes = [];
+  const merged = { ...before }; // every consumer key survives verbatim
+
+  for (const key of Object.keys(kit)) {
+    if (!(key in merged)) merged[key] = kit[key];
+  }
+
+  // Scripts: fill in what the kit adds, never silently replace one of theirs.
+  merged.scripts = { ...(before.scripts || {}) };
+  for (const [name, cmd] of Object.entries(kit.scripts || {})) {
+    if (!(name in merged.scripts)) {
+      merged.scripts[name] = cmd;
+      notes.push(`+ script "${name}"`);
+    } else if (merged.scripts[name] !== cmd) {
+      notes.push(`! script "${name}" kept yours (kit ships a different one)`);
+    }
+  }
+
+  // Dependencies: kit-owned entries track the kit; a consumer-declared entry the
+  // kit does not know about is never dropped. That includes `file:` workspace
+  // deps, whose loss is what breaks the build a day later.
+  for (const field of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
+    if (!before[field] && !kit[field]) continue;
+    const out = { ...(before[field] || {}) };
+    for (const [name, range] of Object.entries(kit[field] || {})) {
+      if (!(name in out)) {
+        out[name] = range;
+        notes.push(`+ ${field} ${name}@${range}`);
+      } else if (out[name] !== range) {
+        notes.push(`~ ${field} ${name} ${out[name]} → ${range} (kit-owned)`);
+        out[name] = range;
+      }
+    }
+    merged[field] = out;
+  }
+
+  const kitText = JSON.stringify(kit);
+  if (JSON.stringify(merged) === kitText) return null; // nothing of theirs to restore
+
+  const live = fs.readFileSync(livePath, 'utf8');
+  const out = JSON.stringify(merged, null, 2) + '\n';
+  if (out === live) return null; // already says what the merge would say
+
+  if (dryRun) {
+    log('info', `package.json would be rewritten (${notes.length} change(s))`);
+    for (const note of notes.slice(0, 12)) log('info', `  ${note}`);
+    if (notes.length > 12) log('info', `  …and ${notes.length - 12} more`);
+    return { notes, planned: true };
+  }
+
+  fs.writeFileSync(livePath, out, 'utf8');
+  log('ok', 'package.json merged — your scripts and dependencies are preserved');
+  for (const note of notes.slice(0, 12)) log('info', `  ${note}`);
+  if (notes.length > 12) log('info', `  …and ${notes.length - 12} more`);
+
+  reconcileLockfile(snapshotDir);
+  return { notes };
+}
+
+/**
+ * A merged manifest and the kit's lockfile disagree, and `npm ci` fails closed on
+ * that — which is precisely the clean-clone build the regression test asserts.
+ * Restore the consumer's lock and re-derive it against the merged manifest.
+ */
+function reconcileLockfile(snapshotDir) {
+  const beforeLock = path.join(snapshotDir, 'package-lock.json');
+  const liveLock = path.join(root, 'package-lock.json');
+  if (fs.existsSync(beforeLock)) {
+    try {
+      fs.copyFileSync(beforeLock, liveLock);
+    } catch (err) {
+      log('warn', `could not restore package-lock.json: ${err.message}`);
+    }
+  }
+  const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  const result = spawnSync(npmCmd, ['install', '--package-lock-only', '--no-audit', '--no-fund'], {
+    cwd: root,
+    stdio: 'ignore',
+    windowsHide: true,
+  });
+  if (result.status === 0) {
+    log('ok', 'package-lock.json re-derived from the merged manifest');
+  } else {
+    log('warn', 'package-lock.json is out of sync with the merged package.json');
+    log('warn', '  run `npm install` before your next `npm ci`');
+  }
+}
+
+// [SPEC 121 / T004] `destination` defaults to the project root — the historic
+// behavior, still used when there is no manifest to compare against. With a
+// manifest, main() extracts to a staging directory instead and reconciles, which
+// is the only way to be selective: neither Expand-Archive nor tar can be told
+// "skip the files this consumer edited".
+function extractArchive(archivePath, destination = root) {
   const ext = archivePath.endsWith('.zip') ? 'zip' : 'tar.gz';
-  log('info', `Extracting ${ext} archive over project root`);
+  log('info', `Extracting ${ext} archive${destination === root ? ' over project root' : ' to staging'}`);
+  fs.mkdirSync(destination, { recursive: true });
 
   if (ext === 'zip' && process.platform === 'win32') {
     // bsdtar misreads drive-letter paths (e.g. E:\...) in -C as remote hosts.
     // PowerShell's Expand-Archive handles Windows paths correctly.
+    // windowsHide: powershell.exe is a console program; launched from a console-less
+    // parent it gets a fresh, visible window. Inherited stdio still carries output.
     const ps = spawnSync(
       'powershell.exe',
       ['-NoProfile', '-NonInteractive', '-Command',
-        `Expand-Archive -LiteralPath '${archivePath}' -DestinationPath '${root}' -Force`],
-      { stdio: 'inherit' }
+        `Expand-Archive -LiteralPath '${archivePath}' -DestinationPath '${destination}' -Force`],
+      { stdio: 'inherit', windowsHide: true }
     );
     if (ps.status !== 0) {
       throw new Error('Extraction failed (Expand-Archive)');
@@ -274,7 +771,7 @@ function extractArchive(archivePath) {
     // Use cwd instead of -C to avoid drive-letter parsing issues on Windows.
     const tarBin = resolveTarBinary();
     const args = ext === 'tar.gz' ? ['-xzf', archivePath] : ['-xf', archivePath];
-    const result = spawnSync(tarBin, args, { cwd: root, stdio: 'inherit' });
+    const result = spawnSync(tarBin, args, { cwd: destination, stdio: 'inherit', windowsHide: true });
     if (result.status !== 0) {
       throw new Error(`Extraction failed (tar=${tarBin})`);
     }
@@ -283,28 +780,289 @@ function extractArchive(archivePath) {
   log('ok', 'Extraction complete');
 }
 
-function updateProjectConfigVersion(toVersion) {
+// ─── [SPEC 121 / T001] Kit manifest ──────────────────────────────────────────
+//
+// Records the SHA-256 of every file the kit DELIVERED, as delivered. Without it
+// the upgrader cannot tell a file the consumer edited from one it shipped, so it
+// treats both the same and overwrites. Note this stores the kit's hash even for
+// files reconcile chose not to overwrite — the point is "what the kit shipped",
+// so a file the consumer edited stays classified `modified` on every later
+// upgrade instead of silently reverting to pristine.
+
+const MANIFEST_PATH = () => path.join(root, '.wxai', 'kit-manifest.json');
+
+function sha256Sync(filePath) {
+  return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
+}
+
+function readKitManifest() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(MANIFEST_PATH(), 'utf8'));
+    return raw && typeof raw.files === 'object' ? raw : null;
+  } catch {
+    return null; // absent or unreadable — caller falls back to unguarded extract
+  }
+}
+
+function writeKitManifest(stagingDir, version, { dryRun = false } = {}) {
+  const files = {};
+  for (const rel of walkRelative(stagingDir)) {
+    try {
+      files[rel] = sha256Sync(path.join(stagingDir, rel));
+    } catch {
+      /* unreadable file in staging — omit rather than record a wrong hash */
+    }
+  }
+  if (dryRun) {
+    log('info', `kit manifest would be written (${Object.keys(files).length} files)`);
+    return Object.keys(files).length;
+  }
+  try {
+    fs.mkdirSync(path.dirname(MANIFEST_PATH()), { recursive: true });
+    fs.writeFileSync(
+      MANIFEST_PATH(),
+      JSON.stringify({ kitVersion: version, generatedAt: new Date().toISOString(), files }, null, 2) + '\n',
+      'utf8'
+    );
+    log('ok', `Kit manifest written (${Object.keys(files).length} files) — the next upgrade can protect your edits`);
+  } catch (err) {
+    log('warn', `could not write kit manifest: ${err.message}`);
+    log('warn', '  the next upgrade will fall back to an unguarded extract');
+  }
+}
+
+/** Every file under `dir`, as root-relative POSIX paths. */
+function walkRelative(dir, prefix = '', acc = []) {
+  let entries;
+  try {
+    entries = fs.readdirSync(path.join(dir, prefix), { withFileTypes: true });
+  } catch {
+    return acc;
+  }
+  for (const entry of entries) {
+    const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) {
+      if (entry.name === 'node_modules' || entry.name === '.git') continue;
+      walkRelative(dir, rel, acc);
+    } else {
+      acc.push(rel);
+    }
+  }
+  return acc;
+}
+
+// ─── [SPEC 121 / T002] Comparator ────────────────────────────────────────────
+//
+// Classifies each incoming file against the live tree and the manifest:
+//   new          — nothing there; safe to write
+//   pristine     — live matches what the kit shipped; safe to overwrite
+//   unchanged    — live already matches the incoming file; nothing to do
+//   modified     — live differs from what the kit shipped; the consumer edited it
+//   project-only — on disk, never shipped by the kit; not ours to touch
+
+function classifyFile(rel, stagingDir, manifest) {
+  const live = path.join(root, rel);
+  if (!fs.existsSync(live)) return 'new';
+
+  let liveHash;
+  try {
+    liveHash = sha256Sync(live);
+  } catch {
+    return 'modified'; // unreadable ⇒ treat as precious, never clobber
+  }
+
+  let incomingHash;
+  try {
+    incomingHash = sha256Sync(path.join(stagingDir, rel));
+  } catch {
+    return 'modified';
+  }
+  if (liveHash === incomingHash) return 'unchanged';
+
+  const shipped = manifest.files[rel];
+  if (!shipped) return 'project-only';
+  return liveHash === shipped ? 'pristine' : 'modified';
+}
+
+// ─── [SPEC 121 / T006] Customizable trees ────────────────────────────────────
+//
+// ONE declared list. These are the trees consumers are expected to edit — the
+// conversion scripts and the rules the AI reads — so a difference there is
+// treated as the consumer's work even when the manifest is missing or stale,
+// rather than as drift to be corrected. Outside these trees a modified file is
+// still preserved; membership here only means "assume edited when unsure".
+//
+// Open question from spec 121 deliberately left open: whether `.claude/skills/`
+// joins wholesale. A reporter asked for the broader list. Adding a tree here is
+// safe (more preservation); removing one is not, so the narrow list ships until
+// that is decided.
+const PRESERVE_TREES = [
+  /^\.claude\/[^/]+\/scripts\//,
+  /^_wxAI\/rules\//,
+];
+
+const isPreserveTree = (rel) => PRESERVE_TREES.some((re) => re.test(rel));
+
+// ─── [SPEC 121 / T004] Reconcile staging into the project ────────────────────
+
+function reconcileStaging(stagingDir, manifest, { dryRun = false } = {}) {
+  const counts = { new: 0, pristine: 0, unchanged: 0, modified: 0, 'project-only': 0 };
+  const preserved = [];
+  const kitNew = [];
+  const replaced = [];
+
+  for (const rel of walkRelative(stagingDir)) {
+    let verdict = classifyFile(rel, stagingDir, manifest);
+
+    // [SPEC 121 / T006] In a customizable tree, a file that differs from the
+    // incoming one is the consumer's until proven otherwise.
+    if (verdict === 'pristine' && isPreserveTree(rel) && !manifest.files[rel]) {
+      verdict = 'modified';
+    }
+
+    counts[verdict]++;
+
+    if (verdict === 'unchanged') continue;
+
+    if (verdict === 'modified' || verdict === 'project-only') {
+      // Not overwritten. Leave the new version alongside so the update is still
+      // reachable — a silently withheld update is its own kind of wrong.
+      preserved.push(rel);
+      if (!dryRun) {
+        const sidecar = path.join(root, `${rel}.kit-new`);
+        try {
+          fs.mkdirSync(path.dirname(sidecar), { recursive: true });
+          fs.copyFileSync(path.join(stagingDir, rel), sidecar);
+          kitNew.push(`${rel}.kit-new`);
+        } catch {
+          /* best effort — never fail an upgrade over a sidecar */
+        }
+      } else {
+        kitNew.push(`${rel}.kit-new`);
+      }
+      continue;
+    }
+
+    replaced.push(rel);
+    if (dryRun) continue;
+
+    const dest = path.join(root, rel);
+    try {
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      fs.copyFileSync(path.join(stagingDir, rel), dest);
+    } catch (err) {
+      log('warn', `could not write ${rel}: ${err.message}`);
+    }
+  }
+
+  log('ok',
+    `${dryRun ? 'Would reconcile' : 'Reconciled'}: ${counts.new} new, ${counts.pristine} updated, ` +
+    `${counts.unchanged} already current, ${counts.modified + counts['project-only']} preserved`);
+
+  return { counts, preserved, kitNew, replaced };
+}
+
+// ─── [SPEC 121 / T007+T008+T009] Change manifest ─────────────────────────────
+//
+// The ONE place an at-risk warning is produced. Both the normal path and the
+// GitHub fallback call this, so the asymmetry the reporters found — fallback
+// gated on --confirm-overwrite and naming four files, normal path with no gate
+// at all — cannot silently come back.
+//
+// Counts print even when zero. An absence of warnings should be something the
+// run states, not something the reader infers from silence.
+
+function reportChanges({ preserved = [], kitNew = [], deleted = [], replaced = [], alsoWrites = [], dryRun = false, acknowledged = false }) {
+  const atRisk = preserved.length + deleted.length;
+
+  console.log('');
+  log('info', `${colors.bold}${dryRun ? 'Dry run — change manifest' : 'Change manifest'}${colors.reset}`);
+  log('info', `  updated in place : ${replaced.length}`);
+  log('info', `  preserved (yours): ${preserved.length}`);
+  log('info', `  .kit-new written : ${kitNew.length}`);
+  log('info', `  stale deletions  : ${deleted.length}`);
+
+  for (const rel of preserved) {
+    log('warn', `  KEPT   ${rel}${isPreserveTree(rel) ? '  [customizable tree]' : ''}`);
+    log('info', `         new version → ${rel}.kit-new`);
+  }
+  for (const rel of deleted) {
+    log('warn', `  DELETED ${rel}  (recoverable from the snapshot above)`);
+  }
+
+  // [SPEC 121 / T013] Writes that are not file replacements were absent from this
+  // manifest entirely, so the count above read as the whole story when it was not.
+  if (alsoWrites.length > 0) {
+    log('info', `  ${dryRun ? 'also writes' : 'also written'}  : ${alsoWrites.length}`);
+    for (const what of alsoWrites) log('info', `  ALSO   ${what}`);
+  }
+
+  if (atRisk === 0) {
+    log('ok', '  Nothing of yours was touched.');
+    return 0;
+  }
+
+  console.log('');
+  if (acknowledged) {
+    log('warn', `proceeded over ${atRisk} at-risk file(s) (--yes)`);
+    return 0;
+  }
+
+  log('warn', `${atRisk} file(s) need your review before this upgrade is finished.`);
+  log('info', '  Review each .kit-new, merge what you want, then delete the sidecar.');
+  log('info', '  Re-run with --yes to accept this without the non-zero exit.');
+  return 2;
+}
+
+function updateProjectConfigVersion(toVersion, { dryRun = false } = {}) {
   const configPath = path.join(root, '.wxkanban-project.json');
   const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  if (dryRun) {
+    log('info', `.wxkanban-project.json version would go ${config.kitVersion || config.version || 'unknown'} → ${toVersion}`);
+    return;
+  }
   // Per AC5: only update the two version fields, preserve everything else.
   config.version = toVersion;
   config.kitVersion = toVersion;
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', 'utf8');
   log('ok', `.wxkanban-project.json version → ${toVersion}`);
+  // [SCOPE 083 / T016] FR-012 — the cached session-start check predates this upgrade and
+  // still says "upgrade available"; left in place, the gateway banner and the Cockpit's
+  // unattended start replay it for up to 6h (feedback 83738c5e). Drop it so the next check
+  // measures again.
+  try {
+    fs.rmSync(path.join(root, '.wxai', 'kit-update-check.json'), { force: true });
+  } catch { /* best effort — a stale cache only delays the next measurement */ }
 }
 
-function runInit() {
+function runInit({ dryRun = false } = {}) {
+  if (dryRun) {
+    // Never spawned in a preview: init installs dependencies and restarts
+    // services. Named rather than modelled, because "we do not know what this
+    // writes" is itself the honest answer and beats an invented file list.
+    log('info', 'init.mjs would run (installs platform deps, rewrites MCP config, restarts services)');
+    return;
+  }
   log('info', 'Re-running init.mjs to install platform-correct deps + restart services');
-  const result = spawnSync('node', [path.join(here, 'init.mjs')], { stdio: 'inherit', cwd: root });
+  // init.mjs hides its OWN children, but the upgrade path spawns init.mjs itself —
+  // without this the upgrade still flashes a window even though init.mjs is clean.
+  const result = spawnSync('node', [path.join(here, 'init.mjs')], {
+    stdio: 'inherit',
+    cwd: root,
+    windowsHide: true,
+  });
   if (result.status !== 0) {
     throw new Error(`init.mjs exited with code ${result.status}`);
   }
 }
 
 async function main() {
+  trustSystemCertificates();
   const args = process.argv.slice(2);
   const allowDowngrade = args.includes('--allow-downgrade');
   const confirmOverwrite = args.includes('--confirm-overwrite');
+  const dryRun = args.includes('--dry-run');           // [SPEC 121 / T010]
+  const assumeYes = args.includes('--yes');            // [SPEC 121 / T007]
   const targetVersion = args.find(a => !a.startsWith('--')) || undefined;
 
   console.log('');
@@ -327,13 +1085,26 @@ async function main() {
   log('info', `wxKanban: ${apiUrl}`);
   console.log('');
 
-  log('info', 'Stopping services');
-  stopService('.mcp-server.pid', 'MCP server');
-  stopService('.orchestrator-gateway.pid', 'orchestrator gateway');
+  // [SPEC 121 / T013] Both of these WRITE, and both used to run before the dry-run
+  // branch was reached — so `--dry-run` stopped the consumer's services and, on a
+  // pre-v1.1.0 kit, deleted mcp-server/ outright, then printed "Nothing was changed."
+  const pendingWrites = [];
+  if (dryRun) {
+    log('info', 'Dry run — services stay up and nothing is removed');
+    pendingWrites.push('stop the MCP server and the orchestrator gateway');
+    for (const rel of cleanupLegacyMcpIfNeeded(currentVersion, { dryRun: true })) {
+      pendingWrites.push(`delete legacy ${rel} (pre-v1.1.0 cutover)`);
+    }
+  } else {
+    log('info', 'Stopping services');
+    stopService('.mcp-server.pid', 'MCP server');
+    stopService('.orchestrator-gateway.pid', 'orchestrator gateway');
+    stopRuntimeServices();
 
-  // [SPEC 019 R15 AC#5] v1.1.0 cutover — remove legacy local-MCP files when upgrading
-  // from a pre-v1.1.0 kit. Hosted MCP (spec 028) means no consumer-side mcp-server/.
-  cleanupLegacyMcpIfNeeded(currentVersion);
+    // [SPEC 019 R15 AC#5] v1.1.0 cutover — remove legacy local-MCP files when upgrading
+    // from a pre-v1.1.0 kit. Hosted MCP (spec 028) means no consumer-side mcp-server/.
+    cleanupLegacyMcpIfNeeded(currentVersion);
+  }
 
   let download;
   try {
@@ -344,35 +1115,159 @@ async function main() {
       die(err.message);
     }
     log('warn', `wxKanban request failed: ${err.message}`);
+    // [SPEC 121 / T009] The fallback archive is NOT stripped server-side, so it
+    // carries the customizable templates too. That extra risk is what this gate
+    // is for — the per-file at-risk reporting both paths share happens after the
+    // comparison, in reportChanges().
     if (!confirmOverwrite) {
       die(
         'GitHub fallback would extract a full kit archive that includes templates the kit author may have changed. ' +
-        'Re-run with --confirm-overwrite if you accept that .CLAUDE.md / AI.md / ProjectOverview.md / README.md may be overwritten, ' +
-        'or fix wxKanban connectivity and retry.'
+        'Re-run with --confirm-overwrite if you accept that CLAUDE.md / AI.md / ProjectOverview.md / README.md may be overwritten, ' +
+        'or fix wxKanban connectivity and retry. Use --dry-run to see exactly which of your files are at risk first.'
       );
     }
     download = await downloadFromGitHub({ targetVersion });
   }
 
+  // [SPEC 121 / T010] A dry run answers the only question worth asking before an
+  // upgrade — "what of mine does this touch?" — and writes nothing into the project.
+  const manifest = readKitManifest();
+  ({ code: process.exitCode } = await applyUpgrade({ download, manifest, dryRun, assumeYes, pendingWrites }));
+}
+
+// ─── [SPEC 121 / T013] ONE upgrade sequence, two modes ───────────────────────
+//
+// The preview and the real upgrade used to be two hand-written sequences, and
+// they drifted the way two copies of anything drift. The preview called the
+// stale cleanup against a project root the overlay had not been applied to, and
+// it modelled none of the manifest, package.json, project-config or init writes
+// at all — so its change manifest was a strict under-count of what a real run
+// does, presented as the whole answer. A safety check that under-reports is
+// worse than no safety check, because someone trusted it.
+//
+// There is now one sequence and a `dryRun` flag. Every step either performs its
+// write or names it. A step added here is modelled by the preview for free,
+// which is the only version of this that stays true.
+
+async function applyUpgrade({ download, manifest, dryRun, assumeYes, pendingWrites = [] }) {
+  const alsoWrites = [...pendingWrites];
+
+  // [SPEC 121 / T003] Snapshot before the first write, on every download path.
+  // die()s rather than continuing unprotected.
+  const snapshot = snapshotBeforeUpgrade(download.archivePath, { dryRun });
+  if (dryRun) {
+    alsoWrites.push(
+      `save a pre-upgrade snapshot of ${snapshot.saved} path(s) to .wxai/${SNAPSHOT_PREFIX}<stamp>${SNAPSHOT_EXT}`
+    );
+  }
+
+  // Staging goes to the OS temp dir on a preview so even .wxai/ is left alone.
+  const stagingDir = dryRun
+    ? fs.mkdtempSync(path.join(os.tmpdir(), 'wxkanban-kit-dry-'))
+    : path.join(root, '.wxai', `kit-staging-${Date.now()}`);
+
+  let changes = { preserved: [], kitNew: [], replaced: [] };
+  let deleted = [];
+
   try {
-    extractArchive(download.archivePath);
+    extractArchive(download.archivePath, stagingDir);
+
+    // [SPEC 121 / T002+T004] With a manifest we can tell an edited file from a
+    // pristine one, so copy selectively. Without one — the first upgrade after
+    // this ships, for every existing consumer — there is no baseline, so fall
+    // back to the historic overwrite. T003's snapshot is what protects that run.
+    if (manifest) {
+      changes = reconcileStaging(stagingDir, manifest, { dryRun });
+    } else {
+      log('warn', 'No kit manifest found — this upgrade cannot tell your edits from stock files.');
+      log('warn', '  Falling back to a full overwrite. Your snapshot above is the safety net.');
+      log('warn', '  A manifest is written at the end, so the NEXT upgrade will preserve your edits.');
+      const written = [];
+      for (const rel of walkRelative(stagingDir)) {
+        written.push(rel);
+        if (dryRun) continue;
+        const dest = path.join(root, rel);
+        try {
+          fs.mkdirSync(path.dirname(dest), { recursive: true });
+          fs.copyFileSync(path.join(stagingDir, rel), dest);
+        } catch (err) {
+          log('warn', `could not write ${rel}: ${err.message}`);
+        }
+      }
+      changes = { preserved: [], kitNew: [], replaced: written };
+    }
+
+    // [SPEC 121 / T001] Record what this kit shipped, as shipped.
+    const manifestFiles = writeKitManifest(stagingDir, download.toVersion, { dryRun });
+    if (dryRun) alsoWrites.push(`write .wxai/kit-manifest.json (${manifestFiles} files)`);
+
+    // [SPEC 121 / T005] Put the consumer's half of package.json back before
+    // anything installs against the archive's copy. Inside the try, because the
+    // kit's own package.json exists only in stagingDir on the reconcile path and
+    // the finally below removes it.
+    const merged = mergePackageJson(snapshot.dir, stagingDir, { dryRun });
+    if (dryRun && merged) {
+      alsoWrites.push(`rewrite package.json (${merged.notes.length} change(s)) and re-derive package-lock.json`);
+    }
+
+    // Remove files the new kit renamed/removed (overlay-extract never deletes).
+    // `willWrite` is what makes the preview honest: the deletion list depends on
+    // the root AFTER the overlay, and on a preview the overlay has not landed.
+    deleted = cleanupStaleAfterExtract({ dryRun, willWrite: changes.replaced });
   } finally {
+    try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch { /* ignore */ }
+    // [SPEC 121 / T019] The expanded snapshot is temp-dir scratch that only T005's
+    // merge above needed. The durable copy is snapshot.archive; drop this one so an
+    // aborted run cannot leave a second kit tree behind. `staged` guards the dry-run
+    // case, where `dir` is the project root itself.
+    if (snapshot.staged) {
+      try { fs.rmSync(snapshot.dir, { recursive: true, force: true }); } catch { /* ignore */ }
+    }
     try { fs.unlinkSync(download.archivePath); } catch { /* ignore */ }
   }
 
-  updateProjectConfigVersion(download.toVersion);
+  updateProjectConfigVersion(download.toVersion, { dryRun });
+  if (dryRun) alsoWrites.push(`set .wxkanban-project.json version to ${download.toVersion}`);
 
   console.log('');
-  runInit();
+  runInit({ dryRun });
+  if (dryRun) alsoWrites.push('run init.mjs (installs deps, rewrites MCP config, restarts services)');
+
+  pruneSnapshots(snapshot.archive, { dryRun });
 
   console.log('');
-  log('ok', `${colors.bold}Upgrade complete${colors.reset}`);
-  log('ok', `${download.fromVersion || 'unknown'} → ${download.toVersion} via ${download.source}`);
+  if (dryRun) {
+    log('ok', `${colors.bold}Dry run complete — nothing was changed${colors.reset}`);
+    log('ok', `${download.fromVersion || 'unknown'} → ${download.toVersion} via ${download.source}`);
+  } else {
+    log('ok', `${colors.bold}Upgrade complete${colors.reset}`);
+    log('ok', `${download.fromVersion || 'unknown'} → ${download.toVersion} via ${download.source}`);
+    log('info', `Pre-upgrade snapshot: ${snapshot.archive}`);
+    log('info', '  Anything of yours this upgrade overwrote can be restored from there.');
+    if (snapshot.archive && /\.(zip|tar\.gz)$/.test(snapshot.archive)) {
+      log('info', process.platform === 'win32'
+        ? `  Expand-Archive -LiteralPath '${snapshot.archive}' -DestinationPath <somewhere>`
+        : `  tar -xzf '${snapshot.archive}' -C <somewhere>`);
+    }
+  }
+
+  // [SPEC 121 / T007] Never finish silently over at-risk files. Exit code 2 says
+  // "there is something for you to look at" — distinct from the 1 a failure returns.
+  let code = reportChanges({ ...changes, deleted, alsoWrites, dryRun, acknowledged: assumeYes });
+  if (dryRun && !manifest) {
+    // No baseline means a real run overwrites everything, which is worth a non-zero
+    // exit even when nothing is listed as "yours" yet. Preserved from the old path.
+    code = Math.max(code, 2);
+  }
   console.log('');
+  // The change set is returned, not just the exit code, so a test can assert what the
+  // preview CLAIMED against what a real run actually does. A dry run whose claims are
+  // untestable is the same untrustworthy check in a new shape.
+  return { code, changes, deleted, alsoWrites };
 }
 
 main().catch(err => {
   console.log('');
   log('err', err.message);
-  process.exit(1);
+  process.exitCode = 1;
 });

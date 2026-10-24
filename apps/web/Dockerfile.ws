@@ -17,7 +17,10 @@ WORKDIR /app
 # `npm install` (not `npm ci`). Runs before NODE_ENV=production so tsx + other
 # devDeps are included in the image.
 COPY package.json ./
-RUN npm install --no-audit --no-fund
+# --legacy-peer-deps: since vitest 4.1.12 (2026-10-15) npm 10.9 crashes resolving
+# vitest's optional peer set ("reading 'edgesOut'"). The only required peer it
+# skips is @types/dom-mediacapture-record (types-only; skipLibCheck is on).
+RUN npm install --no-audit --no-fund --legacy-peer-deps
 
 # Only what the engine actually needs at runtime: its source, the TS config tsx
 # reads, and the drizzle config imported by the db layer. .env* is excluded via

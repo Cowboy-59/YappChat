@@ -573,7 +573,7 @@ function Inner({ autoTranslate, currentUserId }: { autoTranslate: boolean; curre
 
       {/* The conversation fills the whole surface; the list lives in the sidebar. */}
       <section
-        className="relative flex flex-1 flex-col rounded-xl border border-border"
+        className="relative flex min-h-0 flex-1 flex-col rounded-xl border border-border"
         style={{ backgroundColor: "color-mix(in srgb, hsl(var(--card)), #fff 14%)" }}
         onDragOver={(e) => {
           if (activeConv && canSend) {

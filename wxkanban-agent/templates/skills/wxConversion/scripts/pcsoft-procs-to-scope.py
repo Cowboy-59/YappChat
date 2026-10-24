@@ -19,15 +19,39 @@ Usage:
     python scripts/pcsoft-procs-to-scope.py --src pre-convert --out rebuild/scopes
 """
 import argparse
+import sys
 import glob
 import os
 import re
 
 import os as _wmos, sys as _wmsys
 _wmsys.path.insert(0, _wmos.path.dirname(_wmos.path.abspath(__file__)))
-from wxkanban_watermark import stamp_markdown
+import wxconv_redact as rd  # noqa: E402 - the watermark stamp now lives inside rd.write_text()
 
-PROC_RE = re.compile(r"^PROCEDURE\s+([A-Za-z_]\w*)\s*\(([^)]*)\)", re.M)
+# Case-insensitive, with the optional Global/Internal/Server qualifier PCSoft prints in front of
+# the keyword. Requiring uppercase PROCEDURE reported "procedures=0" for whole procedure layers
+# that were present and parsed fine: 259 declarations across 20 sets on one export, 3 sets on
+# another, both silently (wxKanban b9942029, 11207b9f). The '^' anchor stays, so the
+# "Global procedure X (server)" heading form is not counted a second time.
+#
+# The access/kind modifiers WLanguage allows AFTER the keyword ("PROCEDURE PRIVATE _InitCache()",
+# "procedure restricted GeneratePasswordID(...)", the French "PROCEDURE RESTREINT", a class's
+# "PROCEDURE PUBLIC"/"VIRTUAL" methods) hid the declaration just as the lowercase keyword did: the
+# procedure was either missing outright or left with only its heading for a signature (b9942029).
+PROC_RE = re.compile(
+    r"^(?:(?:global|internal|local|server)\s+)?PROCEDURE\s+"
+    r"(?:(?:public|private|protected|restricted|restreint|virtual|global|abstract)\s+)*"
+    r"([A-Za-z_]\w*)\s*\(([^)]*)\)",
+    re.M | re.I,
+)
+# ...but that optional qualifier also admits the documentation's own HEADING for each procedure,
+# "Global procedure NL_ReadParam (server)", which precedes the real declaration. Deduplication kept
+# the first occurrence, so every procedure of a WEBDEV set was documented with the signature
+# "(server)" instead of its parameters - 111 of 111 on one export, 75 on another. The heading is
+# still a valid record of the procedure when no declaration follows it, so it is only outranked,
+# never dropped.
+_HEADING_RE = re.compile(r"^global\s", re.I)
+UNKNOWN_SIG = "?"
 SRVPROC_RE = re.compile(r'HExecuteProcedure\s*\([^,]*,\s*"([^"]+)"')
 QRY_RE = re.compile(r"\bQRY_\w+")
 
@@ -38,13 +62,20 @@ def parse(path):
     procs = []
     for m in PROC_RE.finditer(text):
         pname, params = m.group(1), re.sub(r"\s+", " ", m.group(2)).strip()
-        procs.append((pname, params))
-    # dedupe preserving order
-    seen, uniq = set(), []
-    for p in procs:
-        if p[0] not in seen:
-            seen.add(p[0])
-            uniq.append(p)
+        procs.append((pname, params, bool(_HEADING_RE.match(m.group(0)))))
+    # dedupe preserving order; a declaration's signature outranks the heading's (see _HEADING_RE)
+    pos, uniq = {}, []
+    for pname, params, heading in procs:
+        if pname not in pos:
+            pos[pname] = (len(uniq), heading)
+            uniq.append((pname, params))
+        elif pos[pname][1] and not heading:
+            uniq[pos[pname][0]] = (pname, params)
+            pos[pname] = (pos[pname][0], False)
+    # Only the heading was found: its parentheses hold where the procedure runs, not what it takes.
+    for pname, (idx, heading) in pos.items():
+        if heading and re.fullmatch(r"(?i)server|browser|client|ajax", uniq[idx][1]):
+            uniq[idx] = (pname, UNKNOWN_SIG)
     srv = []
     for s in SRVPROC_RE.findall(text):
         if s not in srv:
@@ -60,7 +91,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--src", default="pre-convert")
     ap.add_argument("--out", default="rebuild/scopes")
+    rd.add_redaction_args(ap, scan=False)
     args = ap.parse_args()
+
+    # rebuild/scopes/_redactions.md is shared with the queries and reports stages: continue it,
+    # never overwrite it, and number above the splitter's tokens (wxKanban f6df3914).
+    state = rd.RedactionState.resume(os.path.join(args.out, rd.SIDECAR_NAME),
+                                     os.path.join(args.src, rd.SIDECAR_NAME))
 
     files = sorted(glob.glob(os.path.join(args.src, "*.proc.md")))
     sets = [parse(f) for f in files]
@@ -113,17 +150,26 @@ def main():
             md.append("\n**Procedures:**\n")
             for pn, pp in s["procs"]:
                 flag = "  **← trigger**" if "trigger" in pn.lower() else ""
+                if pp == UNKNOWN_SIG:
+                    flag += "  _(signature not in the export - only its documentation heading)_"
                 md.append(f"- `{pn}({pp})`{flag}")
         md.append("\n_Source: `pre-convert/" + s["name"] + ".proc.md` — port logic to the API/server layer._")
         md.append("\n---\n")
 
     out_path = os.path.join(args.out, "PROC-procedures-scope.md")
-    open(out_path, "w", encoding="utf-8").write(
-        stamp_markdown("\n".join(md) + "\n", kind="converted", generator="wxConversion"))
+    # [SCOPE 125 / T009] Through the shared funnel (FR-007): redacts, accumulates findings, and
+    # stamps the watermark on .md — so the manual stamp_markdown call is gone, not duplicated.
+    rd.write_text(out_path, "\n".join(md) + "\n", state)
     print(f"sets={len(sets)}  procedures={total_procs}  triggers={len(triggers)}  -> {out_path}")
     for s in sets:
         print(f"  {s['name']}: {len(s['procs'])} procs, {len(s['srv'])} server-procs, {len(s['qrys'])} qry refs")
 
+    sidecar_path = os.path.join(args.out, rd.SIDECAR_NAME)
+    if rd.ledger_changed(state):
+        rd.write_text(sidecar_path, rd.render_sidecar(state), state)
+    print(rd.summary_line(state, sidecar_path))
+    return rd.exit_code(len(state.findings), args.fail_on_secrets)
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

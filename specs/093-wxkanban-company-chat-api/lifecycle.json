@@ -1,0 +1,15 @@
+{
+  "specNumber": "093",
+  "featureName": "wxKanban Company Chat API",
+  "phase": "design",
+  "priority": "high",
+  "progress": {
+    "tasksTotal": 8,
+    "tasksCompleted": 0,
+    "percentage": 0
+  },
+  "timeline": {
+    "created": "2026-10-24T14:40:14.202Z",
+    "phaseStarted": "2026-10-24T14:40:14.202Z"
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "brand": {
+    "brand_name": "wxPerts, featuring wxKanban",
+    "website": "www.wxKanban.com",
+    "niche": "Building AI software development and management systems",
+    "audience": "Developers converting from other languages (WINDEV / WEBDEV and similar), people new to working with AI, and career changers",
+    "transformation": "From no working AI-assisted process to shipping a real application, built or converted, fit for commercial or small-business use"
+  },
+  "course": {
+    "topic": "How to run a whole project through wxKanban's spec-first orchestrator, from scoping to release",
+    "format": "Self-paced, hosted in YappChat Training",
+    "level": "Mixed (beginner through experienced developers new to AI)",
+    "price_point": "Free"
+  },
+  "voice": {
+    "tone_words": ["warm", "technical", "patient"],
+    "we_sound_like": "A patient expert who dumbs down the difficult parts with exact steps and analogies",
+    "we_never_say": "10x your output; any claim that it replaces anyone",
+    "reading_level": "simple"
+  },
+  "outcomes": {
+    "primary_outcome": "The student can create, or convert, an application that is ready for commercial or small-business use",
+    "modules_estimate": "TBD - curriculum-architect to propose"
+  },
+  "tools": {
+    "design": "Canva",
+    "ai_media": "Higgsfield",
+    "planner": "none",
+    "email": "Mailgun"
+  },
+  "preferences": {
+    "save_outputs_to": "courses/wxKanban-Spec-First/"
+  }
+}
