@@ -1,20 +1,18 @@
 import QRCode from "qrcode";
+import { getSiteUrl } from "@/lib/site";
 
 /**
  * Native-app install cards for the dashboard "Jump in" grid: an Android card with
  * a scannable QR to the current build, and an iOS "coming soon" placeholder.
  *
- * The QR and the card both point at the direct .apk download so scanning it starts
- * the install immediately. This URL is per-build (it changes with every EAS build),
- * so it's an env-overridable constant — set NEXT_PUBLIC_ANDROID_APK_URL on each
- * release instead of editing code. The default points at the first published build.
+ * The QR and the card both point at our permanent `/download/android` route, which
+ * redirects to the APK stored at a fixed S3 key (spec 068 delta). A new build is
+ * shipped by uploading over that key — this URL never changes.
  */
-const ANDROID_APK_URL =
-  process.env.NEXT_PUBLIC_ANDROID_APK_URL ??
-  "https://expo.dev/artifacts/eas/Pq8CZjuzpzhUhHoXkgZYo6WkqLmTv5nr6HLiJdFS-2A.apk";
 
 /** Async server component — renders the QR to a data URL at request time. */
 export async function AppDownloadCards() {
+  const ANDROID_APK_URL = `${getSiteUrl()}/download/android`;
   const qr = await QRCode.toDataURL(ANDROID_APK_URL, { margin: 1, width: 240 });
 
   return (
